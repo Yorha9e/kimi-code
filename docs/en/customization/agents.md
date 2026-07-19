@@ -43,7 +43,7 @@ model = "kimi-code/kimi-for-coding"
 thinking_effort = "high"
 ```
 
-The first time an unbound sub-agent type is spawned in a workspace, you are asked once whether to bind a model (answering "keep inheriting" is remembered too). Afterwards the binding is applied mechanically to every new sub-agent of that type — the calling Agent cannot see or override it. Manage bindings anytime with the `/subagent-model` command (`list` / `set <type>` / `clear <type>`). Precedence: workspace binding > profile binding (for profiles shipped with the app) > inherit the calling Agent's current model and effort.
+The first time an unbound sub-agent type is spawned in a workspace, you are asked once whether to bind a model (answering "keep inheriting" is remembered too). Afterwards the binding is applied mechanically to every new sub-agent of that type spawned through the `Agent` tool — the calling Agent cannot see or override it. (`AgentSwarm` batches do not read bindings yet; swarm-wide model routing is future work.) Manage bindings anytime with the `/subagent-model` command (`list` / `set <type>` / `clear <type>`). Precedence: workspace binding > profile binding (for profiles shipped with the app) > inherit the calling Agent's current model and effort.
 
 Bound values are fixed at spawn: resuming a sub-agent always keeps the model and effort it was configured with, mid-conversation switches are not possible, and both are restored after a session restart. A bound alias is validated against your models configuration — if it no longer resolves (for example after being removed from `config.toml`), spawning or resuming fails with a configuration error until you update or clear the binding.
 

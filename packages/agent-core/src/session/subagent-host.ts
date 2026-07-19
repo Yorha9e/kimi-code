@@ -169,10 +169,17 @@ export class SessionSubagentHost {
     const parent = await this.session.ensureAgentResumed(this.ownerAgentId);
     const profile = this.resolveProfile(parent, options.profileName);
     // Model/effort precedence: per-run override (workspace binding) > profile
-    // binding > inherit the parent agent.
-    const modelAlias = this.resolveChildModel(parent, options.modelAlias ?? profile.modelAlias);
+    // binding > inherit the parent agent. Profile bindings are part of the
+    // subagent-model-selection experiment and are ignored when it is off.
+    const modelSelectionEnabled = parent.experimentalFlags.enabled('subagent-model-selection');
+    const modelAlias = this.resolveChildModel(
+      parent,
+      options.modelAlias ?? (modelSelectionEnabled ? profile.modelAlias : undefined),
+    );
     const thinkingEffort =
-      options.thinkingEffort ?? profile.thinkingEffort ?? parent.config.thinkingEffort;
+      options.thinkingEffort ??
+      (modelSelectionEnabled ? profile.thinkingEffort : undefined) ??
+      parent.config.thinkingEffort;
     const { id, agent } = await this.session.createAgent(
       { type: 'sub', generate: parent.rawGenerate },
       { parentAgentId: this.ownerAgentId, swarmItem: options.swarmItem },
@@ -204,9 +211,16 @@ export class SessionSubagentHost {
     options.signal.throwIfAborted();
     const parent = await this.session.ensureAgentResumed(this.ownerAgentId);
     const { child, profileName } = await this.ensureIdleSubagent(agentId, parent);
-    // Sticky semantics: a resumed child always keeps its configured
-    // model/effort; mid-conversation model switches are not supported.
-    const modelAlias = this.resolveChildModel(parent, child.config.modelAlias);
+    // Sticky resume is part of the subagent-model-selection experiment: with
+    // the flag on, a resumed child always keeps its configured model/effort
+    // (no mid-conversation switches); with it off, resume realigns the child
+    // to the parent's current model exactly as before.
+    const sticky = parent.experimentalFlags.enabled('subagent-model-selection');
+    const modelAlias = sticky
+      ? this.resolveChildModel(parent, child.config.modelAlias)
+      : parent.config.modelAlias;
+    // Effort is never touched on resume (same as the pre-change behavior);
+    // the child keeps whatever it was configured with at spawn.
     const thinkingEffort = child.config.thinkingEffort;
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, agentId, profileName, runOptions, {
@@ -229,7 +243,10 @@ export class SessionSubagentHost {
     const parent = await this.session.ensureAgentResumed(this.ownerAgentId);
     const { child, profileName } = await this.ensureIdleSubagent(agentId, parent);
     // Sticky semantics, same as resume().
-    const modelAlias = this.resolveChildModel(parent, child.config.modelAlias);
+    const sticky = parent.experimentalFlags.enabled('subagent-model-selection');
+    const modelAlias = sticky
+      ? this.resolveChildModel(parent, child.config.modelAlias)
+      : parent.config.modelAlias;
     const thinkingEffort = child.config.thinkingEffort;
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       try {
