@@ -170,6 +170,11 @@ function applySubagentOverrides(
   mergedProfiles: Map<string, MergedAgentProfile>,
   resolvedProfiles: Map<string, ResolvedAgentProfile>,
 ): void {
+  // Note: overrides are applied to the shared resolved target profile, the
+  // same mechanism `description` already uses. With a single bundled owner
+  // profile this is safe; if multiple owners ever bind the same subagent type
+  // differently, the first owner processed wins for all of them. Move
+  // overrides onto the owner→subagent edge if that becomes a real config.
   for (const [ownerName, owner] of mergedProfiles) {
     if (owner.subagents === undefined) continue;
     for (const [subagentName, subagent] of Object.entries(owner.subagents)) {

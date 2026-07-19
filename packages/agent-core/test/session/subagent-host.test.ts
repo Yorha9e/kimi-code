@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Agent, AgentOptions } from '../../src/agent';
 import { AGENT_WIRE_PROTOCOL_VERSION } from '../../src/agent/records';
+import { FLAG_DEFINITIONS, FlagResolver } from '../../src/flags';
 import type { ResolvedAgentProfile } from '../../src/profile';
 import type { SDKSessionRPC } from '../../src/rpc';
 import { Session } from '../../src/session';
@@ -1129,7 +1130,7 @@ describe('SessionSubagentHost', () => {
     expect(userTextMessages(histories[1] ?? [])).toEqual(['Implement the retry-safe change']);
   });
 
-  it('keeps a resumed subagent on its configured model (sticky)', async () => {
+  it('keeps a resumed subagent on its configured model (sticky, experiment on)', async () => {
     const twoModelConfig = {
       providers: {},
       models: {
@@ -1140,7 +1141,12 @@ describe('SessionSubagentHost', () => {
         },
       },
     };
-    const parent = testAgent({ initialConfig: twoModelConfig });
+    const parent = testAgent({
+      initialConfig: twoModelConfig,
+      experimentalFlags: new FlagResolver({}, FLAG_DEFINITIONS, {
+        'subagent-model-selection': true,
+      }),
+    });
     parent.configure();
     parent.agent.permission.setMode('yolo');
 
@@ -1181,8 +1187,12 @@ describe('SessionSubagentHost', () => {
     expect(handle.modelAlias).toBe('subagent-model');
   });
 
-  it('fails to resume a subagent whose configured model is no longer resolvable', async () => {
-    const parent = testAgent();
+  it('fails to resume a subagent whose configured model is no longer resolvable (experiment on)', async () => {
+    const parent = testAgent({
+      experimentalFlags: new FlagResolver({}, FLAG_DEFINITIONS, {
+        'subagent-model-selection': true,
+      }),
+    });
     parent.configure();
     parent.agent.permission.setMode('yolo');
 
@@ -1214,6 +1224,49 @@ describe('SessionSubagentHost', () => {
         signal,
       }),
     ).rejects.toThrow(SUBAGENT_MODEL_UNAVAILABLE_MESSAGE);
+  });
+
+  it('realigns a resumed subagent to the parent model when the experiment is off', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.agent.permission.setMode('yolo');
+
+    const child = testAgent();
+    child.configure({ tools: ['Read'] });
+    // The child was originally spawned with a model that no longer matches the
+    // parent agent's current model (as if the parent ran setModel afterwards).
+    child.agent.config.update({ modelAlias: 'stale-model-from-initial-spawn' });
+    child.agent.useProfile(
+      profile({ name: 'explore', tools: ['Read'], systemPrompt: 'explore prompt' }),
+    );
+    child.agent.context.appendUserMessage([{ type: 'text', text: 'Earlier context' }]);
+    child.mockNextResponse({
+      type: 'text',
+      text: 'Resumed the subagent from its earlier context and carried the task through to completion, then reported a full and detailed technical summary so the parent agent can continue without repeating prior work.',
+    });
+
+    const session = fakeSession(parent.agent, child.agent, {
+      'agent-0': {
+        homedir: '/tmp/kimi-session/agents/agent-0',
+        type: 'sub',
+        parentAgentId: 'main',
+      },
+    });
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.resume('agent-0', {
+      parentToolCallId: 'call_agent',
+      prompt: 'Continue from context',
+      description: 'Continue work',
+      runInBackground: false,
+      signal,
+    });
+
+    await handle.completion;
+    // With the experiment off, resume keeps the pre-change realign behavior.
+    expect(child.agent.config.modelAlias).toBe(parent.agent.config.modelAlias);
+    expect(child.agent.config.modelAlias).not.toBe('stale-model-from-initial-spawn');
+    expect(handle.modelAlias).toBe(parent.agent.config.modelAlias);
   });
 
   it('passes an explicit model alias and thinking effort to a spawned child', async () => {
