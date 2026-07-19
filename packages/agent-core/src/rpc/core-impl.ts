@@ -106,6 +106,7 @@ import type {
   GetCronTasksResult,
   GetKimiConfigPayload,
   GetPluginInfoPayload,
+  GetSubagentBindingsResult,
   InstallPluginPayload,
   ImportContextPayload,
   ListSessionsPayload,
@@ -132,6 +133,8 @@ import type {
   SetModelResult,
   SetPermissionPayload,
   SetPluginEnabledPayload,
+  SetSubagentBindingPayload,
+  SetSubagentBindingResult,
   SetPluginMcpServerEnabledPayload,
   SetThinkingPayload,
   SkillSummary,
@@ -1029,6 +1032,19 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     ...payload
   }: SessionScopedPayload<AddAdditionalDirPayload>): Promise<AddAdditionalDirResult> {
     return this.requireSession(sessionId).addAdditionalDir(payload.path, payload.persist);
+  }
+
+  getSubagentBindings({
+    sessionId,
+  }: SessionScopedPayload<EmptyPayload>): Promise<GetSubagentBindingsResult> {
+    return this.requireSession(sessionId).getSubagentBindings();
+  }
+
+  setSubagentBinding({
+    sessionId,
+    ...payload
+  }: SessionScopedPayload<SetSubagentBindingPayload>): Promise<SetSubagentBindingResult> {
+    return this.requireSession(sessionId).setSubagentBinding(payload.agentType, payload.binding);
   }
 
   startBtw({ sessionId, ...payload }: SessionAgentPayload<EmptyPayload>): Promise<string> {
