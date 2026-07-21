@@ -53,6 +53,7 @@ import { IEventBus, type DomainEvent } from '#/app/event/eventBus';
 import type { AgentProfile } from '#/app/agentProfileCatalog/agentProfileCatalog';
 import { ITelemetryService, noopTelemetryService } from '#/app/telemetry/telemetry';
 import { ISessionCronService } from '#/session/cron/sessionCronService';
+import { ISessionQuestionService } from '#/session/question/question';
 import { ISessionMetadata, type AgentMeta } from '#/session/sessionMetadata/sessionMetadata';
 import { ISessionAgentProfileCatalog } from '#/session/sessionAgentProfileCatalog/sessionAgentProfileCatalog';
 import type {
@@ -65,6 +66,7 @@ import { IWireService } from '#/wire/wire';
 import { createFakeProcessRunner } from '../tools/fixtures/fake-exec';
 import { stubFlag } from '../app/flag/stubs';
 import { stubWorkspaceLocalConfig } from '../app/workspaceLocalConfig/stubs';
+import { stubQuestionService } from '../session/question/stubs';
 import {
   appService,
   configServices,
@@ -648,6 +650,12 @@ describe('Agent tool execution contract', () => {
       sessionService(IAgentLifecycleService, lifecycle),
       sessionService(ISessionSubagentService, lifecycle),
       sessionService(ISessionCronService, cronStub),
+      // With the experimental flag enabled (e.g. via the dev env's
+      // KIMI_CODE_EXPERIMENTAL_SUBAGENT_MODEL_SELECTION), an unbound spawn
+      // asks for a binding: default to a dismissing question service so the
+      // spawn falls back to inheritance instead of parking on the harness
+      // RPC. Tests that exercise the ask override this via `extra`.
+      sessionService(ISessionQuestionService, stubQuestionService()),
       ...extra,
     );
     lifecycle.addHandle('main', 'agent');
@@ -1766,6 +1774,107 @@ describe('Agent tool execution contract', () => {
       });
     });
 
+    it('asks once when the type has no binding and applies and persists the answer when enabled', async () => {
+      const events: DomainEvent[] = [];
+      const eventBus = {
+        _serviceBrand: undefined,
+        publish: vi.fn((event: DomainEvent) => {
+          events.push(event);
+        }),
+        subscribe: vi.fn(() => noopDisposable()),
+      } as IEventBus;
+      const lifecycle = createAgentLifecycleStub({
+        createAgentIds: ['agent-child'],
+        handleServices: new Map([['main', new Map([[IEventBus, eventBus]])]]),
+      });
+      const localConfig = stubWorkspaceLocalConfig();
+      const writeType = vi.spyOn(localConfig, 'writeSubagentBinding');
+      const question = stubQuestionService({
+        respond: (req) => ({ answers: { [req.questions[0]?.question ?? '']: 'mock-model' } }),
+      });
+      const context = createAgentToolContext(
+        lifecycle,
+        appService(IFlagService, stubFlag(true)),
+        appService(IWorkspaceLocalConfigService, localConfig),
+        sessionService(ISessionQuestionService, question),
+      );
+
+      await executeAgentTool(context, {
+        prompt: 'Investigate',
+        description: 'Find cause',
+        subagent_type: 'explore',
+      });
+
+      expect(question.request).toHaveBeenCalledOnce();
+      expect(lifecycle.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          binding: expect.objectContaining({
+            profile: 'explore',
+            model: 'mock-model',
+          }),
+        }),
+      );
+      expect(writeType).toHaveBeenCalledWith(expect.any(String), 'explore', {
+        model: 'mock-model',
+        thinkingEffort: undefined,
+      });
+      const spawned = events.find(
+        (event): event is SubagentSpawnedEvent => event.type === 'subagent.spawned',
+      );
+      expect(spawned).toMatchObject({
+        modelAlias: 'mock-model',
+      });
+    });
+
+    it('inherits the caller model without persisting when the binding ask is dismissed and enabled', async () => {
+      const events: DomainEvent[] = [];
+      const eventBus = {
+        _serviceBrand: undefined,
+        publish: vi.fn((event: DomainEvent) => {
+          events.push(event);
+        }),
+        subscribe: vi.fn(() => noopDisposable()),
+      } as IEventBus;
+      const lifecycle = createAgentLifecycleStub({
+        createAgentIds: ['agent-child'],
+        handleServices: new Map([['main', new Map([[IEventBus, eventBus]])]]),
+      });
+      const localConfig = stubWorkspaceLocalConfig();
+      const writeType = vi.spyOn(localConfig, 'writeSubagentBinding');
+      const question = stubQuestionService();
+      const context = createAgentToolContext(
+        lifecycle,
+        appService(IFlagService, stubFlag(true)),
+        appService(IWorkspaceLocalConfigService, localConfig),
+        sessionService(ISessionQuestionService, question),
+      );
+      const own = context.get(IAgentProfileService).data();
+
+      await executeAgentTool(context, {
+        prompt: 'Investigate',
+        description: 'Find cause',
+        subagent_type: 'explore',
+      });
+
+      expect(question.request).toHaveBeenCalledOnce();
+      expect(lifecycle.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          binding: expect.objectContaining({
+            profile: 'explore',
+            model: own.modelAlias,
+            thinking: own.thinkingLevel,
+          }),
+        }),
+      );
+      expect(writeType).not.toHaveBeenCalled();
+      const spawned = events.find(
+        (event): event is SubagentSpawnedEvent => event.type === 'subagent.spawned',
+      );
+      expect(spawned).toMatchObject({
+        modelAlias: own.modelAlias,
+      });
+    });
+
     it('keeps the bound model on a directly resumed subagent and reports it on the spawned event when enabled', async () => {
       const events: DomainEvent[] = [];
       const eventBus = {
@@ -2637,6 +2746,9 @@ describe('Agent tools', () => {
         sessionService(IAgentLifecycleService, lifecycle),
         sessionService(ISessionSubagentService, lifecycle),
         sessionService(ISessionCronService, cronStub),
+        // See createAgentToolContext: an unbound spawn asks for a binding
+        // when the experimental flag is enabled; dismiss by default.
+        sessionService(ISessionQuestionService, stubQuestionService()),
       );
       lifecycle.addHandle('main', 'agent');
     });

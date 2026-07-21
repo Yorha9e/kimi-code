@@ -13,6 +13,13 @@
  * model alias (one `modelCatalog.get` rejects) warns and falls through to
  * the next-lower level. Storage failures are not swallowed — they propagate
  * to the caller.
+ *
+ * Callers may supply an optional interactive `ask` callback — only the
+ * `Agent` tool spawn path does; the swarm path never asks. When present, a
+ * missing slot/type binding or a stale stored alias asks the user once and
+ * adopts the (already persisted) answer as terminal; a dismissed ask falls
+ * through exactly like a missing entry, keeping the stale-alias warning on
+ * the repair case.
  */
 
 import { IFlagService } from '#/app/flag/flag';
@@ -30,10 +37,37 @@ export interface SubagentSpawnBindingResolution {
   readonly warning?: string;
 }
 
+/**
+ * Context for one interactive ask-once point: `slot` is set when the ask
+ * concerns a named binding slot rather than a subagent type, and
+ * `missingModel` is set when a stored binding references a model alias that
+ * no longer exists — the ask explains why it is happening and the answer
+ * repairs the broken binding.
+ */
+export interface AskSubagentBindingContext {
+  readonly missingModel?: string;
+  readonly slot?: string;
+}
+
+/**
+ * Interactive ask-once binding creation. Returns the binding the user chose
+ * (the asker persists the answer itself), or `undefined` when the ask was
+ * dismissed or the environment is non-interactive.
+ */
+export type AskSubagentSpawnBindingCallback = (
+  profileName: string,
+  context?: AskSubagentBindingContext,
+) => Promise<SubagentBinding | undefined>;
+
 export interface ResolveSubagentSpawnBindingDeps {
   readonly flags: IFlagService;
   readonly workspaceLocalConfig: IWorkspaceLocalConfigService;
   readonly modelCatalog: IModelCatalog;
+  /**
+   * Interactive ask-once creation — supplied only by the `Agent` tool spawn
+   * path; the swarm path resolves read-only and never asks.
+   */
+  readonly ask?: AskSubagentSpawnBindingCallback;
 }
 
 export interface ResolveSubagentSpawnBindingInput {
@@ -63,7 +97,15 @@ export async function resolveSubagentSpawnBinding(
         'the type binding',
       );
       if (resolved.terminal) return withWarnings(resolved.resolution, warnings);
+      const asked = await askOnce(deps, input.profileName, {
+        slot,
+        missingModel: resolved.missingModel,
+      });
+      if (asked !== undefined) return withWarnings(asked, warnings);
       warnings.push(resolved.warning);
+    } else {
+      const asked = await askOnce(deps, input.profileName, { slot });
+      if (asked !== undefined) return withWarnings(asked, warnings);
     }
   }
 
@@ -79,15 +121,53 @@ export async function resolveSubagentSpawnBinding(
       'the caller model',
     );
     if (resolved.terminal) return withWarnings(resolved.resolution, warnings);
+    const asked = await askOnce(deps, input.profileName, {
+      missingModel: resolved.missingModel,
+    });
+    if (asked !== undefined) return withWarnings(asked, warnings);
     warnings.push(resolved.warning);
+  } else {
+    const asked = await askOnce(deps, input.profileName, undefined);
+    if (asked !== undefined) return withWarnings(asked, warnings);
   }
 
   return withWarnings({}, warnings);
 }
 
+/**
+ * Run one interactive ask point when an `ask` callback is supplied. Returns
+ * the adopted resolution, or `undefined` when asking is unavailable (the
+ * read-only swarm path) or the ask was dismissed — the caller then falls
+ * through exactly as if the entry were missing.
+ */
+async function askOnce(
+  deps: ResolveSubagentSpawnBindingDeps,
+  profileName: string,
+  context: AskSubagentBindingContext | undefined,
+): Promise<SubagentSpawnBindingResolution | undefined> {
+  if (deps.ask === undefined) return undefined;
+  const binding = await deps.ask(profileName, context);
+  if (binding === undefined) return undefined;
+  return adoptAskedBinding(binding);
+}
+
+/**
+ * An ask answer is already persisted by the asker and its options come from
+ * the model catalog, so it is adopted directly without re-validation.
+ */
+function adoptAskedBinding(binding: SubagentBinding): SubagentSpawnBindingResolution {
+  if (binding.inherit === true) return {};
+  return { model: binding.model, thinking: binding.thinkingEffort };
+}
+
 type BindingEntryResolution =
   | { readonly terminal: true; readonly resolution: SubagentSpawnBindingResolution }
-  | { readonly terminal: false; readonly warning: string };
+  | {
+      readonly terminal: false;
+      readonly warning: string;
+      /** The stale alias, for the interactive repair ask. */
+      readonly missingModel: string;
+    };
 
 function resolveBindingEntry(
   deps: ResolveSubagentSpawnBindingDeps,
@@ -107,6 +187,7 @@ function resolveBindingEntry(
     return {
       terminal: false,
       warning: `Subagent binding [${sectionLabel}] references model alias "${entry.model}" which is not configured; falling back to ${fallbackLabel}.`,
+      missingModel: entry.model,
     };
   }
   return {

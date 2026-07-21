@@ -4,7 +4,8 @@
  * The LLM-facing wrapper over the `subagent` domain: translates the tool args
  * into a Profile + Model binding — resolving the workspace model bindings
  * (`bindingResolution`) behind the `subagent-model-selection` experimental
- * flag — creates (or resumes) an agent through
+ * flag, asking the user once to create a missing or stale binding
+ * (`bindingAsk`) — creates (or resumes) an agent through
  * `IAgentLifecycleService`, drives one turn via `ISessionSubagentService.run`,
  * and mirrors the run onto the calling agent's record stream
  * (`mirrorAgentRun`). The tool also owns the JSON schema + description,
@@ -64,9 +65,11 @@ import { IModelCatalog } from '#/kosong/model/catalog';
 import { IAgentLifecycleService } from '#/session/agentLifecycle/agentLifecycle';
 import { isSubagentMeta, subagentLabels, subagentParentAgentId } from '#/session/agentLifecycle/subagentMetadata';
 import { ISessionProcessRunner } from '#/session/process/processRunner';
+import { ISessionQuestionService } from '#/session/question/question';
 import { ISessionMetadata } from '#/session/sessionMetadata/sessionMetadata';
 import { ISessionWorkspaceContext } from '#/session/workspaceContext/workspaceContext';
 
+import { createSubagentBindingAsker } from '../bindingAsk';
 import { resolveSubagentSpawnBinding } from '../bindingResolution';
 import { SUBAGENT_MODEL_SELECTION_FLAG_ID } from '../flag';
 import { emitAgentRunSpawned, mirrorAgentRun } from '../mirrorAgentRun';
@@ -183,6 +186,7 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
     @IFlagService private readonly flags: IFlagService,
     @IWorkspaceLocalConfigService private readonly workspaceLocalConfig: IWorkspaceLocalConfigService,
     @IModelCatalog private readonly modelCatalog: IModelCatalog,
+    @ISessionQuestionService private readonly question: ISessionQuestionService,
   ) {
     this.callerAgentId = scopeContext.agentId;
     this.canRunInBackground = () =>
@@ -301,6 +305,14 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
           flags: this.flags,
           workspaceLocalConfig: this.workspaceLocalConfig,
           modelCatalog: this.modelCatalog,
+          ask: createSubagentBindingAsker({
+            question: this.question,
+            workspaceLocalConfig: this.workspaceLocalConfig,
+            modelCatalog: this.modelCatalog,
+            workDir: this.workspace.workDir,
+            agentId: this.callerAgentId,
+            signal: controller.signal,
+          }),
         },
         {
           workDir: this.workspace.workDir,
