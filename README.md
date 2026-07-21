@@ -14,17 +14,17 @@
 
 先用 `node -v` 确认当前版本，低于 24.15 时按下面任一方式升级：
 
-**方式 1：winget（推荐，一条命令）**
+**方式 1：官方安装包（推荐，留在 24 线）**
+
+从 [nodejs.org](https://nodejs.org/dist/latest-v24.x/) 下载 24 线最新的 Windows 安装包（`node-v24.x.x-x64.msi`），直接运行即可**覆盖升级**，全局已装的 pnpm、npm 全局包都会保留。
+
+**方式 2：winget（只能跟 Current 线，慎选）**
 
 ```powershell
-winget upgrade OpenJS.NodeJS          # Current 线
-# 或装 LTS 线：
-winget upgrade OpenJS.NodeJS.LTS
+winget install OpenJS.NodeJS          # 装的是 Current 线（如 26.x），主版本跨越大
 ```
 
-**方式 2：官方安装包**
-
-从 [nodejs.org](https://nodejs.org/) 下载 >= 24.15 的 Windows 安装包（.msi），直接运行即可**覆盖升级**，全局已装的 pnpm、npm 全局包都会保留。
+注意：winget 源**没有 24 线的包**（按大版本拆分的 id 只到 `OpenJS.NodeJS.23`，通用的 `OpenJS.NodeJS` 是 Current 线）。另外 `winget upgrade` 可能报"找不到与输入条件匹配的已安装程序包"——这说明现有 Node 的注册 id 与实际版本不一致（例如注册为 `OpenJS.NodeJS.22` 实际已是 24.x），这时别用 winget，走方式 1。
 
 **方式 3：版本管理器（需要在多个 Node 版本间切换时）**
 
