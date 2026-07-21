@@ -60,7 +60,9 @@ npm install -g ./moonshot-ai-kimi-code-0.28.0.tgz
 - 更新：重新 build + pack + `npm install -g` 新 tgz
 - 卸载：`npm rm -g @moonshot-ai/kimi-code`
 
-### 方式 C：`npm link` 直接接管 `kimi` 命令（⚠️ 不建议）
+### 方式 C：`npm link` 直接接管 `kimi` 命令（⛔ 非常非常不建议）
+
+> **注意：本方式是过渡形态，随时会变。** 后续计划给 fork 改用**独立的呼出命令名**（不再占用官方 `kimi`）和**与官方区分的版本号**（如 `0.28.0-fork.1` 之类），届时本节的做法会整个作废。在改动落地之前，请把 `npm link` 视为临时 hack，**非常非常不建议使用**。
 
 ```bash
 cd /path/to/kimi-code/apps/kimi-code
@@ -68,16 +70,17 @@ npm run build        # 确保 dist/main.mjs 已构建
 npm link             # 把全局 kimi 软链到本仓库的产物
 ```
 
-之后任何文件夹敲 `kimi` 走的就是这个 fork 的构建，且**每次重新 build 后自动生效**，无需重装。撤销：`npm rm -g @moonshot-ai/kimi-code`，再装回官方版。
+之后任何文件夹敲 `kimi` 走的就是这个 fork 的构建，且每次重新 build 后自动生效，无需重装。撤销：`npm rm -g @moonshot-ai/kimi-code`，再装回官方版。
 
 **为什么不建议：**
 
-- 它会**静默顶掉官方 `kimi`**——之后你根本无法从命令本身分辨跑的是官方版还是 fork 版，`kimi --version` 显示的版本号还和官方一样（都是 0.28.0），出问题时极易误判
+- 它会**静默顶掉官方 `kimi`**——之后你根本无法从命令本身分辨跑的是官方版还是 fork 版，`kimi --version` 显示的版本号还和官方一样（都是 0.28.0），出问题时极易误判（这正是后续要改独立命令名和独立版本号的原因）
 - 官方发新版后 `npm i -g @moonshot-ai/kimi-code@latest` 升级的是官方包，但 `kimi` 仍指向你的仓库——你以为升级了，实际没有
 - 仓库目录一旦被移动、重命名或删除，全局 `kimi` 直接变成死链
 - 排查官方 bug / 给上游提 issue 时，必须在官方产物上复现，链接状态下很容易拿错环境
+- 它是**即将被替换的临时方案**——等独立命令名落地后你还得再改一次习惯，不如一开始就不用
 
-只在"确定要长期拿 fork 当主力"时才考虑这种方式；日常更推荐方式 A（免安装）或方式 B（明确安装/卸载）。
+日常请用方式 A（免安装）或方式 B（明确安装/卸载）。
 
 ### 启用本 fork 的实验功能（子代理模型绑定）
 
