@@ -17,6 +17,8 @@ export const SUBAGENT_INHERIT_VALUE = '__inherit__';
 /** Models only need to expose their supported thinking efforts to the picker. */
 export type SubagentBindingModelLike = {
   readonly supportEfforts?: readonly string[];
+  readonly maxContextSize?: number;
+  readonly maxOutputSize?: number;
 };
 
 export interface SubagentBindingPickerParams {
@@ -47,11 +49,37 @@ export function subagentSupportEfforts(
 }
 
 /** Renders a binding the way `/subagent-model list` and the settings rows do. */
-export function formatSubagentBinding(binding: SubagentBinding): string {
+export function formatSubagentBinding(
+  binding: SubagentBinding,
+  availableModels?: Readonly<Record<string, SubagentBindingModelLike>>,
+): string {
   if (binding.inherit === true) return 'inherit from main agent';
   const parts = [binding.model ?? 'inherit model'];
   if (binding.thinkingEffort !== undefined) parts.push(`thinking ${binding.thinkingEffort}`);
-  return parts.join(', ');
+  return parts.join(', ') + modelCapabilitySuffix(binding.model, availableModels);
+}
+
+/** Appends `(ctx: …[, out: …])` when the bound model is a known alias; unknown
+ * (stale) aliases render without a capability suffix. */
+function modelCapabilitySuffix(
+  model: string | undefined,
+  availableModels: Readonly<Record<string, SubagentBindingModelLike>> | undefined,
+): string {
+  if (model === undefined || availableModels === undefined) return '';
+  const alias = availableModels[model];
+  if (alias?.maxContextSize === undefined) return '';
+  const segments = [`ctx: ${formatTokenCount(alias.maxContextSize)}`];
+  if (alias.maxOutputSize !== undefined) {
+    segments.push(`out: ${formatTokenCount(alias.maxOutputSize)}`);
+  }
+  return ` (${segments.join(', ')})`;
+}
+
+/** Abbreviates a token count for compact labels: 32768 → `32k`, 1048576 → `1M`. */
+function formatTokenCount(count: number): string {
+  if (count >= 1_000_000) return `${String(Math.floor(count / 1_000_000))}M`;
+  if (count >= 1_000) return `${String(Math.floor(count / 1_000))}k`;
+  return String(count);
 }
 
 /**

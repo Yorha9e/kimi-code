@@ -49,17 +49,18 @@ export async function handleSubagentModelCommand(
       );
       return;
     }
+    const availableModels = host.state.appState.availableModels;
     const lines = ['Subagent model bindings (workspace):'];
     if (entries.length > 0) {
       lines.push('  Types:');
       for (const [type, binding] of entries) {
-        lines.push(`    ${type}: ${formatSubagentBinding(binding)}`);
+        lines.push(`    ${type}: ${formatSubagentBinding(binding, availableModels)}`);
       }
     }
     if (slotEntries.length > 0) {
       lines.push('  Slots:');
       for (const [slot, binding] of slotEntries) {
-        lines.push(`    ${slot}: ${formatSubagentBinding(binding)}`);
+        lines.push(`    ${slot}: ${formatSubagentBinding(binding, availableModels)}`);
       }
     }
     host.showStatus(lines.join('\n'));

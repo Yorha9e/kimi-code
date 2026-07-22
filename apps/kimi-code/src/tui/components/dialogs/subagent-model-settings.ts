@@ -370,7 +370,7 @@ export class SubagentModelSettingsComponent extends Container implements Focusab
     if (effective === undefined) {
       status = row.isNew === true ? 'not bound · new' : 'not bound';
     } else {
-      status = formatSubagentBinding(effective);
+      status = formatSubagentBinding(effective, this.opts.availableModels);
     }
     let detail = layer.draft.has(rowKey(row)) ? `${status} · modified` : status;
     const globalRef = this.globalReference(row);
