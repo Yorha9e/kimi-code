@@ -78,7 +78,7 @@ git pull --ff-only && pnpm install && pnpm -C apps/kimi-code run build
 可以给自己起个别名（Git Bash 写进 `~/.bashrc`）：
 
 ```bash
-alias kimi-dev='node /d/vscode/kimisubagentexplore/kimi-code/apps/kimi-code/dist/main.mjs'
+alias kimi-dev='node /path/to/kimi-code/apps/kimi-code/dist/main.mjs'
 ```
 
 ### 方式 B：打包后全局安装
