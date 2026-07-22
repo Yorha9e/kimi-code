@@ -360,7 +360,7 @@ describe('global subagent bindings', () => {
     await expect(readGlobalSubagentSlotBindings(kaos)).resolves.toEqual({});
   });
 
-  it('writes and reads back a global type binding at ~/.kimi-code/local.toml', async () => {
+  it('writes and reads back a global type binding at ~/.omkc/local.toml', async () => {
     const kaos = await makeHome();
 
     const { configPath } = await writeGlobalSubagentBinding(kaos, 'coder', {
@@ -368,7 +368,7 @@ describe('global subagent bindings', () => {
       thinkingEffort: 'high',
     });
 
-    expect(configPath).toBe(join(kaos.gethome(), '.kimi-code', 'local.toml'));
+    expect(configPath).toBe(join(kaos.gethome(), '.omkc', 'local.toml'));
     await expect(readGlobalSubagentBinding(kaos, 'coder')).resolves.toEqual({
       model: 'kimi-code/kimi-for-coding',
       thinkingEffort: 'high',
@@ -392,7 +392,7 @@ describe('global subagent bindings', () => {
     });
     await writeGlobalSubagentSlotBinding(kaos, 'debater_b', { model: 'openrouter/claude' });
 
-    expect(configPath).toBe(join(kaos.gethome(), '.kimi-code', 'local.toml'));
+    expect(configPath).toBe(join(kaos.gethome(), '.omkc', 'local.toml'));
     await expect(readGlobalSubagentSlotBindings(kaos)).resolves.toEqual({
       debater_a: { model: 'deepseek/deepseek-v4', thinkingEffort: undefined, inherit: undefined },
       debater_b: { model: 'openrouter/claude', thinkingEffort: undefined, inherit: undefined },
@@ -430,8 +430,8 @@ describe('global subagent bindings', () => {
 
   it('preserves unrelated content in the global local.toml', async () => {
     const kaos = await makeHome();
-    const configPath = join(kaos.gethome(), '.kimi-code', 'local.toml');
-    await mkdir(join(kaos.gethome(), '.kimi-code'), { recursive: true });
+    const configPath = join(kaos.gethome(), '.omkc', 'local.toml');
+    await mkdir(join(kaos.gethome(), '.omkc'), { recursive: true });
     await writeFile(configPath, '[workspace]\nadditional_dir = ["shared"]\n', 'utf-8');
 
     await writeGlobalSubagentBinding(kaos, 'explore', { model: 'sub2/glm-5.2-x' });

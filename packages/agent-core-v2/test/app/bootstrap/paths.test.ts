@@ -12,7 +12,7 @@ describe('bootstrap path helpers', () => {
       expect(resolveKimiHome('/tmp/kimi')).toBe('/tmp/kimi');
     });
 
-    it('falls back to KIMI_CODE_HOME env', () => {
+    it('falls back to KIMI_CODE_HOME env (legacy compat)', () => {
       const prev = process.env['KIMI_CODE_HOME'];
       process.env['KIMI_CODE_HOME'] = '/env/kimi';
       try {
@@ -20,6 +20,21 @@ describe('bootstrap path helpers', () => {
       } finally {
         if (prev === undefined) delete process.env['KIMI_CODE_HOME'];
         else process.env['KIMI_CODE_HOME'] = prev;
+      }
+    });
+
+    it('prefers OMKC_HOME over KIMI_CODE_HOME', () => {
+      const prevOmkc = process.env['OMKC_HOME'];
+      const prevKimi = process.env['KIMI_CODE_HOME'];
+      process.env['OMKC_HOME'] = '/env/omkc';
+      process.env['KIMI_CODE_HOME'] = '/env/kimi';
+      try {
+        expect(resolveKimiHome()).toBe('/env/omkc');
+      } finally {
+        if (prevOmkc === undefined) delete process.env['OMKC_HOME'];
+        else process.env['OMKC_HOME'] = prevOmkc;
+        if (prevKimi === undefined) delete process.env['KIMI_CODE_HOME'];
+        else process.env['KIMI_CODE_HOME'] = prevKimi;
       }
     });
   });

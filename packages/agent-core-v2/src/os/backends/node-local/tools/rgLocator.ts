@@ -65,9 +65,9 @@ function rgBinaryName(): string {
 }
 
 function getShareDir(): string {
-  const override = process.env['KIMI_CODE_HOME'];
+  const override = process.env['OMKC_HOME'] ?? process.env['KIMI_CODE_HOME'];
   if (override !== undefined && override !== '') return override;
-  return join(homedir(), '.kimi-code');
+  return join(homedir(), '.omkc');
 }
 
 export function getShareBinRgPath(): string {

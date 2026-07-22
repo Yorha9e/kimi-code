@@ -72,7 +72,7 @@ describe('Session context', () => {
         model: 'test-model',
         thinkingEffort: 'high',
       });
-      expect(toPosix(configPath)).toBe(toPosix(join(osHomeDir, '.kimi-code', 'local.toml')));
+      expect(toPosix(configPath)).toBe(toPosix(join(osHomeDir, '.omkc', 'local.toml')));
       await expect(session.getGlobalSubagentBindings()).resolves.toEqual({
         coder: { model: 'test-model', thinkingEffort: 'high', inherit: undefined },
       });
@@ -273,7 +273,7 @@ describe('Session context', () => {
 
 /**
  * Build a session Kaos pair whose `gethome()` points at a temp directory, so
- * the global `~/.kimi-code/local.toml` never touches the real home. The
+ * the global `~/.omkc/local.toml` never touches the real home. The
  * wrapper re-wraps `withCwd`/`withEnv` results because `LocalKaos` returns a
  * fresh instance from each of them.
  */

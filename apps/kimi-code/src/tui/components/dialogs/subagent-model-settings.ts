@@ -1,7 +1,7 @@
 /**
  * Settings panel that batch-edits subagent model bindings across two config
  * layers — the workspace layer (`.kimi-code/local.toml` in the repo) and the
- * global layer (`~/.kimi-code/local.toml`). Each layer owns one row per known
+ * global layer (`~/.omkc/local.toml`). Each layer owns one row per known
  * subagent type plus one per existing named slot, its own local draft (Map)
  * staged through the shared model → effort picker chain, and a single Apply
  * step that hands the changed rows of the ACTIVE layer to the command layer for

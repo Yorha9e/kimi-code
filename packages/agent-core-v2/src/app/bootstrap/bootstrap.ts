@@ -145,7 +145,8 @@ export function resolveKimiHome(
   env: NodeJS.ProcessEnv = process.env,
   osHomeDir: string = homedir(),
 ): string {
-  return homeDir ?? env['KIMI_CODE_HOME'] ?? join(osHomeDir, '.kimi-code');
+  // omkc home resolution: OMKC_HOME > KIMI_CODE_HOME (compat) > ~/.omkc.
+  return homeDir ?? env['OMKC_HOME'] ?? env['KIMI_CODE_HOME'] ?? join(osHomeDir, '.omkc');
 }
 
 export function resolveConfigPath(input: {

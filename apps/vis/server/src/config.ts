@@ -1,13 +1,13 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-/** Resolve KIMI_CODE_HOME (env > ~/.kimi-code). */
+/** Resolve the omkc home (OMKC_HOME > KIMI_CODE_HOME env > ~/.omkc). */
 export function resolveKimiCodeHome(): string {
-  const envHome = process.env['KIMI_CODE_HOME'];
+  const envHome = process.env['OMKC_HOME'] ?? process.env['KIMI_CODE_HOME'];
   if (envHome !== undefined && envHome.length > 0) {
     return envHome;
   }
-  return join(homedir(), '.kimi-code');
+  return join(homedir(), '.omkc');
 }
 
 /** HTTP port for the vis API server. */

@@ -40,20 +40,22 @@ tools exist and the user didn't name one, ask which.
 Config lives in three files; on key collision, later entries in this
 precedence order override earlier ones.
 
-The kimi-code runtime resolves the user-global directory as `KIMI_CODE_HOME`
-first, falling back to `~/.kimi-code`. Before touching the user-global file,
+The kimi-code runtime resolves the user-global directory as `OMKC_HOME`
+first, then `KIMI_CODE_HOME` (legacy compat), falling back to `~/.omkc`.
+Before touching the user-global file,
 resolve the actual directory with Bash so you don't read or write the wrong
-one. Check whether `KIMI_CODE_HOME` is set and fall back to `~/.kimi-code`
-when it is empty:
+one. Check whether `OMKC_HOME`/`KIMI_CODE_HOME` is set and fall back to `~/.omkc`
+when both are empty:
 
 ```bash
+echo "$OMKC_HOME"
 echo "$KIMI_CODE_HOME"
-echo "$HOME/.kimi-code"
+echo "$HOME/.omkc"
 ```
 
-Use the first line when it is non-empty; otherwise use the second line. In the
+Use the first non-empty line; otherwise use the last one. In the
 rest of this skill, `<KIMI_CODE_HOME>` means that resolved data root —
-**never assume `~/.kimi-code`**.
+**never assume `~/.omkc`**.
 
 - User-global: `<KIMI_CODE_HOME>/mcp.json`. Use for servers you want
   everywhere.

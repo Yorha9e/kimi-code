@@ -5,8 +5,8 @@ import { SkillParseError, UnsupportedSkillTypeError, parseSkillFromFile } from '
 import type { SkillDefinition, SkillRoot, SkillSource, SkippedSkill } from './types';
 import { normalizeSkillName } from './types';
 
-// Relative to brandHomeDir, which already IS the brand data dir (~/.kimi-code or
-// $KIMI_CODE_HOME) — no '.kimi-code' segment here, or it would nest twice.
+// Relative to brandHomeDir, which already IS the brand data dir (~/.omkc or
+// $OMKC_HOME/$KIMI_CODE_HOME) — no '.omkc' segment here, or it would nest twice.
 const USER_BRAND_DIRS = ['skills'] as const;
 const USER_GENERIC_DIRS = ['.agents/skills'] as const;
 const PROJECT_BRAND_DIRS = ['.kimi-code/skills'] as const;
@@ -19,9 +19,9 @@ const MAX_SKILL_SCAN_DEPTH = 8;
 export interface SkillPathContext {
   readonly userHomeDir: string;
   /**
-   * Brand data dir — `KIMI_CODE_HOME`, or `<userHomeDir>/.kimi-code` by default.
+   * Brand data dir — `OMKC_HOME`/`KIMI_CODE_HOME`, or `<userHomeDir>/.omkc` by default.
    * User brand skills live directly under here as `skills/`, so this path
-   * carries no `.kimi-code` segment of its own (that would double the prefix).
+   * carries no `.omkc` segment of its own (that would double the prefix).
    */
   readonly brandHomeDir?: string;
   readonly workDir: string;
@@ -68,7 +68,7 @@ export async function resolveSkillRoots(
   const roots: SkillRoot[] = [];
   const mergeAllAvailableSkills = options.mergeAllAvailableSkills ?? true;
   const { userHomeDir, workDir } = options.paths;
-  const brandHomeDir = options.paths.brandHomeDir ?? path.join(userHomeDir, '.kimi-code');
+  const brandHomeDir = options.paths.brandHomeDir ?? path.join(userHomeDir, '.omkc');
   const projectRoot = await findProjectRoot(workDir);
 
   if (options.explicitDirs !== undefined && options.explicitDirs.length > 0) {

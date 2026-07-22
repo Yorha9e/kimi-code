@@ -3,7 +3,15 @@ import { homedir } from 'node:os';
 import { join } from 'pathe';
 
 export function resolveKimiHome(homeDir?: string | undefined): string {
-  return homeDir ?? process.env['KIMI_CODE_HOME'] ?? join(homedir(), '.kimi-code');
+  // omkc home resolution: OMKC_HOME wins; KIMI_CODE_HOME stays honored so
+  // existing sandboxes/tests that export it keep working; default is the
+  // omkc-private ~/.omkc (not the shared ~/.kimi-code).
+  return (
+    homeDir ??
+    process.env['OMKC_HOME'] ??
+    process.env['KIMI_CODE_HOME'] ??
+    join(homedir(), '.omkc')
+  );
 }
 
 export function resolveConfigPath(input: {

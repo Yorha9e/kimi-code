@@ -182,7 +182,7 @@ export async function writeSubagentSlotBinding(
 
 /**
  * Global subagent bindings — same TOML format and schema as the per-workspace
- * file, but stored at a fixed path (`~/.kimi-code/local.toml`) instead of a
+ * file, but stored at a fixed path (`~/.omkc/local.toml`) instead of a
  * project root. Workspace entries take precedence on spawn; global entries
  * act as the fallback layer below them.
  */
@@ -363,7 +363,7 @@ function getWorkspaceLocalConfigPath(projectRoot: string): string {
  * project-root search, unlike the per-workspace file.
  */
 function getGlobalLocalConfigPath(kaos: Kaos): string {
-  return join(kaos.gethome(), '.kimi-code', 'local.toml');
+  return join(kaos.gethome(), '.omkc', 'local.toml');
 }
 
 async function findProjectRoot(kaos: Kaos, workDir: string): Promise<string> {

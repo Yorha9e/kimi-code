@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { getDataDir } from '#/utils/paths';
 
 export const INVALID_TUI_CONFIG_MESSAGE =
-  'Invalid TUI config in ~/.kimi-code/tui.toml; using defaults.';
+  'Invalid TUI config in ~/.omkc/tui.toml; using defaults.';
 
 export const TuiThemeSchema = z.string();
 
@@ -172,9 +172,9 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
 }
 
 export function renderTuiConfig(config: TuiConfig): string {
-  return `# ~/.kimi-code/tui.toml
-# Client preferences for kimi-code.
-# Agent/runtime settings stay in ~/.kimi-code/config.toml.
+  return `# ~/.omkc/tui.toml
+# Client preferences for omkc.
+# Agent/runtime settings stay in ~/.omkc/config.toml.
 
 theme = "${escapeTomlBasicString(config.theme)}" # "auto" | "dark" | "light" | custom theme name
 disable_paste_burst = ${String(config.disablePasteBurst)} # true disables non-bracketed paste-burst fallback

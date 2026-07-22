@@ -228,8 +228,8 @@ function appendTrace(text, trace) {
 }
 
 function resolveKimiHome() {
-  const explicit = process.env.KIMI_CODE_HOME?.trim();
-  return explicit && explicit.length > 0 ? explicit : path.join(homedir(), '.kimi-code');
+  const explicit = (process.env.OMKC_HOME ?? process.env.KIMI_CODE_HOME)?.trim();
+  return explicit && explicit.length > 0 ? explicit : path.join(homedir(), '.omkc');
 }
 
 function datasourceApiUrl() {

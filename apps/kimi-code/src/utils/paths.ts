@@ -23,15 +23,17 @@ import {
   KIMI_CODE_UPDATE_DIR_NAME,
   KIMI_CODE_UPDATE_ROLLOUT_LOG_FILE_NAME,
   KIMI_CODE_UPDATE_STATE_FILE_NAME,
+  OMKC_HOME_ENV,
 } from '#/constant/app';
 
 /**
- * Return the root data directory for Kimi Code.
+ * Return the root data directory for omkc.
  *
- * Priority: `KIMI_CODE_HOME` env var > `~/.kimi-code`.
+ * Priority: `OMKC_HOME` env var > `KIMI_CODE_HOME` env var (legacy compat) >
+ * `~/.omkc`.
  */
 export function getDataDir(): string {
-  const envDir = process.env[KIMI_CODE_HOME_ENV];
+  const envDir = process.env[OMKC_HOME_ENV] ?? process.env[KIMI_CODE_HOME_ENV];
   if (envDir) {
     return envDir;
   }

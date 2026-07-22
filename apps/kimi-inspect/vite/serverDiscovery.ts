@@ -66,11 +66,11 @@ interface ServerLockDisk {
   host_version?: string;
 }
 
-/** home resolution per request: `KIMI_CODE_HOME` env, else `~/.kimi-code`. */
+/** home resolution per request: `OMKC_HOME` > `KIMI_CODE_HOME` env, else `~/.omkc`. */
 export function resolveKimiHomeDir(env: NodeJS.ProcessEnv = process.env): string {
-  const fromEnv = env['KIMI_CODE_HOME'];
+  const fromEnv = env['OMKC_HOME'] ?? env['KIMI_CODE_HOME'];
   if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
-  return join(homedir(), '.kimi-code');
+  return join(homedir(), '.omkc');
 }
 
 /** `process.kill(pid, 0)` probe — same semantics as the server's registry:

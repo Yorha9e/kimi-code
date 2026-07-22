@@ -377,7 +377,7 @@ export class Session {
     return writeSubagentSlotBinding(systemKaos, cwd, slot, binding);
   }
 
-  /** Global subagent model bindings from `~/.kimi-code/local.toml`. */
+  /** Global subagent model bindings from `~/.omkc/local.toml`. */
   async getGlobalSubagentBindings(): Promise<Readonly<Record<string, SubagentBinding>>> {
     const cwd = this.toolKaos.getcwd();
     return readGlobalSubagentBindings(this.systemContextKaos(cwd));
@@ -401,7 +401,7 @@ export class Session {
     return writeGlobalSubagentBinding(systemKaos, agentType, binding);
   }
 
-  /** Global named slot bindings from `~/.kimi-code/local.toml`. */
+  /** Global named slot bindings from `~/.omkc/local.toml`. */
   async getGlobalSubagentSlotBindings(): Promise<Readonly<Record<string, SubagentBinding>>> {
     const cwd = this.toolKaos.getcwd();
     return readGlobalSubagentSlotBindings(this.systemContextKaos(cwd));
