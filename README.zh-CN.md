@@ -4,6 +4,27 @@
 
 [Documentation](https://moonshotai.github.io/kimi-code/zh/) · [Issues](https://github.com/MoonshotAI/kimi-code/issues) · [English](README.md)
 
+---
+
+> ### ⚠️ 社区实验版声明 / Community Experimental Fork
+>
+> **本仓库不是 Kimi Code 官方仓库**，而是个人维护的社区实验分支，用于在功能回馈上游之前（及期间）
+> 进行前沿功能探索。官方版本请使用 [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code)。
+>
+> **This is not the official Kimi Code repository.** It is a personal, community-maintained fork
+> for exploring frontier features. For the official version, please use
+> [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code).
+>
+> **当前实验 / Current experiments：**
+> - **子 Agent 模型与思考强度绑定**（Subagent model & thinking-effort bindings）—
+>   使用说明：[SUBAGENT-MODEL-BINDING.md](SUBAGENT-MODEL-BINDING.md) ·
+>   上游 PR：[MoonshotAI/kimi-code#1928](https://github.com/MoonshotAI/kimi-code/pull/1928)
+> - **多智能体编排 MoA**（Multi-agent orchestration）— 设计阶段，尚未合入 / under design
+>
+> 实验代码随时可能变更、变基或移除，欢迎通过本仓库 Issues 反馈。
+> Experimental code here may be changed, rebased, or removed at any time.
+
+---
 
 ![Kimi Code 的使用演示](./docs/media/intro.gif)
 

@@ -165,6 +165,7 @@ function tuiConfig(overrides: Partial<TuiConfig> = {}): TuiConfig {
     editorCommand: null,
     notifications: { enabled: true, condition: 'unfocused' },
     upgrade: { autoInstall: true },
+    moa: { card: true, statusExport: true },
     ...overrides,
   };
 }

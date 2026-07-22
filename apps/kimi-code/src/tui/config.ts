@@ -30,6 +30,11 @@ export const UpgradePreferencesSchema = z.object({
   autoInstall: z.boolean(),
 });
 
+export const MoaPreferencesSchema = z.object({
+  card: z.boolean(),
+  statusExport: z.boolean(),
+});
+
 export const TuiConfigFileSchema = z.object({
   theme: TuiThemeSchema.optional(),
   disable_paste_burst: z.boolean().optional(),
@@ -49,6 +54,12 @@ export const TuiConfigFileSchema = z.object({
       auto_install: z.boolean().optional(),
     })
     .optional(),
+  moa: z
+    .object({
+      card: z.boolean().optional(),
+      status_export: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const TuiConfigSchema = z.object({
@@ -57,12 +68,14 @@ export const TuiConfigSchema = z.object({
   editorCommand: z.string().nullable(),
   notifications: NotificationsConfigSchema,
   upgrade: UpgradePreferencesSchema,
+  moa: MoaPreferencesSchema,
 });
 
 export type TuiConfigFileShape = z.infer<typeof TuiConfigFileSchema>;
 export type TuiConfig = z.infer<typeof TuiConfigSchema>;
 export type NotificationsConfig = z.infer<typeof NotificationsConfigSchema>;
 export type UpgradePreferences = z.infer<typeof UpgradePreferencesSchema>;
+export type MoaPreferences = z.infer<typeof MoaPreferencesSchema>;
 
 export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
   enabled: true,
@@ -73,12 +86,18 @@ export const DEFAULT_UPGRADE_PREFERENCES: UpgradePreferences = {
   autoInstall: true,
 };
 
+export const DEFAULT_MOA_PREFERENCES: MoaPreferences = {
+  card: true,
+  statusExport: true,
+};
+
 export const DEFAULT_TUI_CONFIG: TuiConfig = TuiConfigSchema.parse({
   theme: 'auto',
   disablePasteBurst: false,
   editorCommand: null,
   notifications: DEFAULT_NOTIFICATIONS_CONFIG,
   upgrade: DEFAULT_UPGRADE_PREFERENCES,
+  moa: DEFAULT_MOA_PREFERENCES,
 });
 
 /**
@@ -145,6 +164,10 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
     upgrade: {
       autoInstall: config.upgrade?.auto_install ?? DEFAULT_UPGRADE_PREFERENCES.autoInstall,
     },
+    moa: {
+      card: config.moa?.card ?? DEFAULT_MOA_PREFERENCES.card,
+      statusExport: config.moa?.status_export ?? DEFAULT_MOA_PREFERENCES.statusExport,
+    },
   });
 }
 
@@ -165,6 +188,10 @@ notification_condition = "${config.notifications.condition}" # "unfocused" | "al
 
 [upgrade]
 auto_install = ${String(config.upgrade.autoInstall)} # true | false
+
+[moa]
+card = ${String(config.moa.card)} # true launches the moa-card companion app on interactive startup
+status_export = ${String(config.moa.statusExport)} # true serves engine status events over SSE on 127.0.0.1:39631+
 `;
 }
 

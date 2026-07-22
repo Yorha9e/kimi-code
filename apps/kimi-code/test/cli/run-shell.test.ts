@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     theme: 'dark' | 'light' | 'auto';
     editorCommand: string | null;
     notifications: { enabled: boolean; condition: 'unfocused' | 'always' };
+    moa: { card: boolean; statusExport: boolean };
   };
 
   class TuiConfigParseError extends Error {
@@ -143,6 +144,8 @@ vi.mock('../../src/migration/index', () => ({
 
 vi.mock('node:child_process', () => ({
   execSync: mocks.execSync,
+  spawn: vi.fn(() => ({ on: vi.fn(), unref: vi.fn() })),
+  spawnSync: vi.fn(),
 }));
 
 describe('runShell', () => {
@@ -168,6 +171,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     mocks.tuiGetStartupMcpMs.mockResolvedValue(47);
@@ -250,6 +254,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
 
@@ -280,6 +285,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     mocks.createKimiDeviceId.mockImplementationOnce((homeDir, options) => {
@@ -317,6 +323,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     mocks.harnessCreatesDeviceIdOnConstruction = true;
@@ -366,6 +373,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     let currentSessionId = 'ses-startup';
@@ -407,6 +415,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
 
@@ -458,6 +467,7 @@ describe('runShell', () => {
         theme: 'auto',
         editorCommand: 'vim',
         notifications: { enabled: true, condition: 'always' },
+        moa: { card: true, statusExport: true },
       }),
     );
     mocks.detectTerminalTheme.mockResolvedValue('light');
@@ -497,6 +507,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.harnessGetConfigDiagnostics.mockResolvedValue({
       warnings: ['Ignored invalid config in config.toml: loop_control.'],
@@ -531,6 +542,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
 
@@ -582,6 +594,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
 
@@ -630,6 +643,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockRejectedValue(new Error('boom'));
 
@@ -663,6 +677,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     mocks.tuiGetCurrentSessionId.mockReturnValue('ses-1');
@@ -719,6 +734,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.tuiStart.mockResolvedValue(undefined);
     mocks.tuiGetCurrentSessionId.mockReturnValue('ses-1');
@@ -768,6 +784,7 @@ describe('runShell', () => {
       theme: 'dark',
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
+      moa: { card: true, statusExport: true },
     });
     mocks.detectPendingMigration.mockResolvedValue({ totalSessions: 1 });
     mocks.harnessGetConfig.mockRejectedValue(
