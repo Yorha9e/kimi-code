@@ -40,6 +40,8 @@ describe('TUI config', () => {
     expect(text).toContain('[notifications]');
     expect(text).toContain('enabled = true');
     expect(text).toContain('notification_condition = "unfocused"');
+    expect(text).toContain('[moa]');
+    expect(text).toContain('card = true');
   });
 
   it('parses valid TOML', () => {
@@ -55,6 +57,9 @@ notification_condition = "always"
 
 [upgrade]
 auto_install = false
+
+[moa]
+card = false
 `);
 
     expect(config).toEqual({
@@ -63,6 +68,7 @@ auto_install = false
       editorCommand: 'code --wait',
       notifications: { enabled: false, condition: 'always' },
       upgrade: { autoInstall: false },
+      moa: { card: false },
     });
   });
 
@@ -87,6 +93,7 @@ command = "   "
       editorCommand: null,
       notifications: { enabled: true, condition: 'unfocused' },
       upgrade: { autoInstall: true },
+      moa: { card: true },
     });
   });
 
@@ -95,6 +102,7 @@ command = "   "
 
     expect(config.notifications).toEqual({ enabled: true, condition: 'unfocused' });
     expect(config.upgrade).toEqual({ autoInstall: true });
+    expect(config.moa).toEqual({ card: true });
   });
 
   it('throws TuiConfigParseError with fallback when parsing fails, leaving the file untouched', async () => {
@@ -119,6 +127,7 @@ command = "   "
         editorCommand: 'vim',
         notifications: { enabled: false, condition: 'always' },
         upgrade: { autoInstall: false },
+        moa: { card: false },
       },
       filePath,
     );
@@ -129,6 +138,7 @@ command = "   "
       editorCommand: 'vim',
       notifications: { enabled: false, condition: 'always' },
       upgrade: { autoInstall: false },
+      moa: { card: false },
     });
   });
 
@@ -141,6 +151,7 @@ command = "   "
         editorCommand: null,
         notifications: DEFAULT_TUI_CONFIG.notifications,
         upgrade: DEFAULT_TUI_CONFIG.upgrade,
+        moa: DEFAULT_TUI_CONFIG.moa,
       },
       filePath,
     );
