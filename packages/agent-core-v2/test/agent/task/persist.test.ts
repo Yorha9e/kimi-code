@@ -28,6 +28,9 @@ import { IFileSystemStorageService } from '#/persistence/interface/storage';
 const SESSION_SCOPE = 'session';
 const AGENT_SCOPE = `${SESSION_SCOPE}/agents/main`;
 
+// Windows ignores POSIX mode bits on mkdir, so the 0700 assertion is POSIX-only.
+const isWin = process.platform === 'win32';
+
 let disposables: DisposableStore;
 let sessionDir: string;
 let docs: IAtomicDocumentStore;
@@ -130,7 +133,7 @@ describe('AgentTaskPersistence', () => {
     expect(all.map((task) => task.taskId)).toEqual(['bash-11111111']);
   });
 
-  it('writeTask creates tasks dir with mode 0700', async () => {
+  it.skipIf(isWin)('writeTask creates tasks dir with mode 0700', async () => {
     await persistence.writeTask(sample());
     const st = await stat(join(sessionDir, SESSION_SCOPE, 'tasks'));
     // eslint-disable-next-line no-bitwise
