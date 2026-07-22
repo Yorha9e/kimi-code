@@ -3,8 +3,9 @@
  *
  * `zip -qr out.zip .` spawns the Info-ZIP CLI, which is not available on
  * Windows. yazl (already a dependency) produces the same layout in pure
- * JavaScript: every file under the source root, recursively, named by its
- * forward-slash relative path.
+ * JavaScript: `zipDirectoryToBuffer(sourceRoot)` zips every file under the
+ * source root recursively, named by its forward-slash relative path, and
+ * resolves to the archive bytes.
  */
 
 import { readdir } from 'node:fs/promises';
@@ -12,7 +13,6 @@ import path from 'node:path';
 
 import { ZipFile } from 'yazl';
 
-/** Zip every file under `sourceRoot` (recursively) and return the archive bytes. */
 export async function zipDirectoryToBuffer(sourceRoot: string): Promise<Buffer> {
   const zip = new ZipFile();
   for (const file of await collectFiles(sourceRoot)) {

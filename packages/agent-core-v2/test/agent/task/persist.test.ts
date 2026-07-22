@@ -5,6 +5,8 @@
  * resolved by interface, covering primary writes, local-first reads, the
  * previous v2 session-root fallback, and exact output paths. Run with
  * `pnpm --filter @moonshot-ai/agent-core-v2 exec vitest run test/agent/task/persist.test.ts`.
+ * Windows ignores POSIX mode bits on mkdir, so the 0700 directory-mode
+ * assertion is POSIX-only (`it.skipIf(isWin)`).
  */
 
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -28,7 +30,6 @@ import { IFileSystemStorageService } from '#/persistence/interface/storage';
 const SESSION_SCOPE = 'session';
 const AGENT_SCOPE = `${SESSION_SCOPE}/agents/main`;
 
-// Windows ignores POSIX mode bits on mkdir, so the 0700 assertion is POSIX-only.
 const isWin = process.platform === 'win32';
 
 let disposables: DisposableStore;

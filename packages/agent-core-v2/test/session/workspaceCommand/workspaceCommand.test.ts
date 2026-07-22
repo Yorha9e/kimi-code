@@ -32,10 +32,6 @@ import { SessionWorkspaceContextService } from '#/session/workspaceContext/works
 
 import { stubContextMemory, type StubContextMemory } from '../../agent/contextMemory/stubs';
 
-// The node-fs config backend normalizes through pathe (forward slashes) while
-// the session workspace context resolves through node:path (platform
-// separators). Derive both forms from the same POSIX literals so expectations
-// track the implementation on Windows and stay identical on POSIX.
 function slashForm(path: string): string {
   return normalizeSlash(resolveOsPath(path));
 }

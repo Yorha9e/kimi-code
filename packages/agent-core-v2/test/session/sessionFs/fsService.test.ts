@@ -70,8 +70,6 @@ function fakeFs(
     addAncestors(rel);
   }
   const isDir = (p: string): boolean => p === WORK_DIR || dirSet.has(p);
-  // SessionFsService joins paths with node:path, which yields backslashes on
-  // Windows; normalize incoming paths so this fake's '/'-based lookups work.
   const norm = (p: string): string => p.replace(/\\/g, '/');
   const enoent = (p: string): NodeJS.ErrnoException => {
     const err = new Error(`ENOENT: ${p}`) as NodeJS.ErrnoException;

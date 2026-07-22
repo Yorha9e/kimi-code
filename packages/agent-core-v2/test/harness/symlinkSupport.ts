@@ -3,7 +3,8 @@
  *
  * On Windows, `fs.symlink` requires SeCreateSymbolicLinkPrivilege (an
  * elevated shell or Developer Mode); without it the call rejects with EPERM.
- * Symlink-dependent tests should probe once and skip when unsupported:
+ * `canCreateSymlinks()` probes once and caches the result, so
+ * symlink-dependent tests can skip when unsupported:
  *
  * ```ts
  * it('follows symlinks', async (ctx) => {
@@ -19,7 +20,6 @@ import { join } from 'node:path';
 
 let probe: Promise<boolean> | undefined;
 
-/** Resolve once to whether symlink creation works in this environment. */
 export function canCreateSymlinks(): Promise<boolean> {
   probe ??= (async () => {
     const dir = await mkdtemp(join(tmpdir(), 'kimi-symlink-probe-'));

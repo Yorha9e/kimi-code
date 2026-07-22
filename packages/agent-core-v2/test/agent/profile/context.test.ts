@@ -17,8 +17,6 @@ let homeDir: string;
 let workDir: string;
 let extraDirs: string[];
 
-// Windows only allows creating symlinks with elevated privileges or Developer
-// Mode enabled; skip the test when the filesystem rejects the operation.
 async function symlinkOrSkip(
   target: string,
   path: string,

@@ -18,8 +18,6 @@ import type {
   ToolExecution,
 } from '#/tool/toolContract';
 
-// Use fileURLToPath, not URL.pathname: on Windows .pathname yields a
-// leading-slash path like "/D:/..." which Node resolves as "D:\D:\...".
 export const fixturesDir = fileURLToPath(new URL('./fixtures/', import.meta.url));
 export const stdioFixture = fileURLToPath(new URL('./fixtures/mock-stdio-server.mjs', import.meta.url));
 export const cwdStdioFixture = fileURLToPath(new URL('./fixtures/cwd-stdio-server.mjs', import.meta.url));
