@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChoicePickerComponent } from '#/tui/components/dialogs/choice-picker';
 import {
   SubagentModelSettingsComponent,
+  type SubagentLayer,
+  type SubagentModelLayerData,
   type SubagentModelSettingsChange,
-  type SubagentModelSettingsOptions,
 } from '#/tui/components/dialogs/subagent-model-settings';
 
 const ANSI = /\u001B\[[0-9;]*m/g;
@@ -13,6 +14,8 @@ const ESC = String.fromCodePoint(27);
 const ENTER = '\r';
 const DOWN = `${ESC}[B`;
 const UP = `${ESC}[A`;
+const TAB = '\t';
+const SHIFT_TAB = `${ESC}[Z`;
 
 function strip(text: string): string {
   return text.replaceAll(ANSI, '');
@@ -22,26 +25,35 @@ interface Harness {
   panel: SubagentModelSettingsComponent;
   mountPicker: ReturnType<typeof vi.fn<(picker: ChoicePickerComponent) => void>>;
   remount: ReturnType<typeof vi.fn>;
-  onApply: ReturnType<typeof vi.fn<(changes: readonly SubagentModelSettingsChange[]) => void>>;
+  onApply: ReturnType<
+    typeof vi.fn<(layer: SubagentLayer, changes: readonly SubagentModelSettingsChange[]) => void>
+  >;
   onCancel: ReturnType<typeof vi.fn>;
 }
 
-function makeHarness(
-  overrides: Partial<SubagentModelSettingsOptions> = {},
-): Harness {
+interface HarnessOverrides {
+  readonly workspace?: SubagentModelLayerData;
+  readonly global?: SubagentModelLayerData;
+  readonly availableModels?: Readonly<Record<string, { supportEfforts?: readonly string[] }>>;
+}
+
+const EMPTY_LAYER: SubagentModelLayerData = { bindings: {}, slots: {} };
+
+function makeHarness(overrides: HarnessOverrides = {}): Harness {
   const mountPicker = vi.fn<(picker: ChoicePickerComponent) => void>();
   const remount = vi.fn();
-  const onApply = vi.fn<(changes: readonly SubagentModelSettingsChange[]) => void>();
+  const onApply = vi.fn<
+    (layer: SubagentLayer, changes: readonly SubagentModelSettingsChange[]) => void
+  >();
   const onCancel = vi.fn();
   const panel = new SubagentModelSettingsComponent({
-    bindings: {},
-    slots: {},
-    availableModels: { 'kimi-k2': { supportEfforts: ['low', 'high'] } },
+    workspace: overrides.workspace ?? EMPTY_LAYER,
+    global: overrides.global ?? EMPTY_LAYER,
+    availableModels: overrides.availableModels ?? { 'kimi-k2': { supportEfforts: ['low', 'high'] } },
     mountPicker,
     remount,
     onApply,
     onCancel,
-    ...overrides,
   });
   return { panel, mountPicker, remount, onApply, onCancel };
 }
@@ -60,20 +72,35 @@ function goToApply(panel: SubagentModelSettingsComponent): void {
   moveDown(panel, 64);
 }
 
+/** Type a string one character at a time (as the inline slot-name input sees it). */
+function type(panel: SubagentModelSettingsComponent, value: string): void {
+  for (const ch of value) panel.handleInput(ch);
+}
+
+/** Cursor onto `+ Add slot…` (after the 6 built-in type rows) and open the input. */
+function openAddSlot(panel: SubagentModelSettingsComponent, typeRows = 6): void {
+  moveDown(panel, typeRows);
+  panel.handleInput(ENTER);
+}
+
 describe('SubagentModelSettingsComponent', () => {
   it('renders bound, inherit, and unbound rows across Types and Slots sections', () => {
-    const bindings: Record<string, SubagentBinding> = {
-      coder: { model: 'kimi-k2', thinkingEffort: 'high' },
-      critic: { inherit: true },
+    const workspace: SubagentModelLayerData = {
+      bindings: {
+        coder: { model: 'kimi-k2', thinkingEffort: 'high' },
+        critic: { inherit: true },
+      },
+      slots: {
+        review: { model: 'kimi-k2' },
+      },
     };
-    const slots: Record<string, SubagentBinding> = {
-      review: { model: 'kimi-k2' },
-    };
-    const { panel } = makeHarness({ bindings, slots });
+    const { panel } = makeHarness({ workspace });
     const out = text(panel);
 
-    expect(out).toContain(' Subagent models');
-    expect(out).toContain(' ↑↓ navigate · Enter select · D delete · Esc cancel');
+    expect(out).toContain(' Subagent models (workspace)');
+    expect(out).toContain(
+      ' Tab toggle layer · ↑↓ navigate · Enter select · D delete · Esc cancel',
+    );
     expect(out).toContain(' Types');
     expect(out).toContain('coder  kimi-k2, thinking high');
     expect(out).toContain('critic  inherit from main agent');
@@ -81,7 +108,92 @@ describe('SubagentModelSettingsComponent', () => {
     expect(out).toContain('explore  not bound');
     expect(out).toContain(' Slots');
     expect(out).toContain('review  kimi-k2');
+    expect(out).toContain('+ Add slot…');
     expect(out).toContain('[ Apply changes ]  no changes');
+  });
+
+  it('switches layers with Tab and reflects the active layer in the title and rows', () => {
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const global: SubagentModelLayerData = {
+      bindings: { critic: { model: 'gpt-5' } },
+      slots: {},
+    };
+    const { panel } = makeHarness({ workspace, global });
+
+    expect(text(panel)).toContain(' Subagent models (workspace)');
+    expect(text(panel)).toContain('coder  kimi-k2');
+
+    panel.handleInput(TAB);
+    const globalOut = text(panel);
+    expect(globalOut).toContain(' Subagent models (global)');
+    expect(globalOut).toContain('critic  gpt-5');
+    // The workspace-only binding is not present on the global layer.
+    expect(globalOut).toContain('coder  not bound');
+
+    // Shift+Tab switches back.
+    panel.handleInput(SHIFT_TAB);
+    expect(text(panel)).toContain(' Subagent models (workspace)');
+    expect(text(panel)).toContain('coder  kimi-k2');
+  });
+
+  it('keeps workspace and global drafts independent', () => {
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const global: SubagentModelLayerData = {
+      bindings: { critic: { model: 'gpt-5' } },
+      slots: {},
+    };
+    const { panel, onApply } = makeHarness({ workspace, global });
+
+    // Workspace: clear `coder`.
+    panel.handleInput('D');
+    expect(text(panel)).toContain('[ Apply changes ]  1 change');
+
+    // Switch to global: its draft starts empty.
+    panel.handleInput(TAB);
+    expect(text(panel)).toContain(' Subagent models (global)');
+    expect(text(panel)).toContain('[ Apply changes ]  no changes');
+
+    // Global: clear `critic` (the second type row).
+    moveDown(panel, 1);
+    panel.handleInput('D');
+    expect(text(panel)).toContain('[ Apply changes ]  1 change');
+
+    // Back to workspace: its own single change is still staged.
+    panel.handleInput(TAB);
+    expect(text(panel)).toContain(' Subagent models (workspace)');
+    expect(text(panel)).toContain('[ Apply changes ]  1 change');
+
+    // Applying reports only the active (workspace) layer's change.
+    goToApply(panel);
+    panel.handleInput(ENTER);
+    expect(onApply).toHaveBeenCalledWith('workspace', [
+      { kind: 'type', name: 'coder', binding: undefined },
+    ]);
+  });
+
+  it('shows the persisted global binding as a reference on workspace rows', () => {
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const global: SubagentModelLayerData = {
+      bindings: { coder: { model: 'gpt-5' }, explore: { inherit: true } },
+      slots: {},
+    };
+    const { panel } = makeHarness({ workspace, global });
+
+    expect(text(panel)).toContain('coder  kimi-k2 · global: gpt-5');
+    expect(text(panel)).toContain('explore  not bound · global: inherit from main agent');
+
+    // The global layer does not reference itself.
+    panel.handleInput(TAB);
+    expect(text(panel)).not.toContain('global:');
   });
 
   it('moves the cursor with ↑↓', () => {
@@ -130,8 +242,11 @@ describe('SubagentModelSettingsComponent', () => {
   });
 
   it('stages an inherit draft when the first picker option is chosen', () => {
-    const bindings: Record<string, SubagentBinding> = { coder: { model: 'kimi-k2' } };
-    const { panel, mountPicker } = makeHarness({ bindings });
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const { panel, mountPicker } = makeHarness({ workspace });
 
     panel.handleInput(ENTER);
     const modelPicker = mountPicker.mock.calls[0]![0];
@@ -157,8 +272,11 @@ describe('SubagentModelSettingsComponent', () => {
   });
 
   it('clears a bound row with D and restores it with a second D', () => {
-    const bindings: Record<string, SubagentBinding> = { coder: { model: 'kimi-k2' } };
-    const { panel } = makeHarness({ bindings });
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const { panel } = makeHarness({ workspace });
 
     panel.handleInput('D');
     expect(text(panel)).toContain('coder  not bound · modified');
@@ -168,6 +286,110 @@ describe('SubagentModelSettingsComponent', () => {
     expect(text(panel)).toContain('coder  kimi-k2');
     expect(text(panel)).not.toContain('· modified');
     expect(text(panel)).toContain('[ Apply changes ]  no changes');
+  });
+
+  it('adds a new slot through the inline input and opens the binding picker', () => {
+    const { panel, mountPicker } = makeHarness();
+
+    openAddSlot(panel);
+    expect(text(panel)).toContain('New slot name');
+
+    type(panel, 'fast');
+    panel.handleInput(ENTER);
+
+    // The new row is staged as an unbound "new" slot and the model picker opens.
+    expect(text(panel)).not.toContain('New slot name');
+    expect(text(panel)).toContain('fast  not bound · new');
+    expect(mountPicker).toHaveBeenCalledTimes(1);
+    expect(mountPicker.mock.calls[0]![0].render(120).map(strip).join('\n')).toContain(
+      'Bind model for slot "fast"',
+    );
+  });
+
+  it('commits the picked model onto a newly added slot', () => {
+    const { panel, mountPicker, onApply } = makeHarness();
+
+    openAddSlot(panel);
+    type(panel, 'fast');
+    panel.handleInput(ENTER);
+
+    // Pick the only model (down once), which has efforts → pick `high` (down twice).
+    const modelPicker = mountPicker.mock.calls[0]![0];
+    modelPicker.handleInput(DOWN);
+    modelPicker.handleInput(ENTER);
+    const effortPicker = mountPicker.mock.calls[1]![0];
+    effortPicker.handleInput(DOWN);
+    effortPicker.handleInput(DOWN);
+    effortPicker.handleInput(ENTER);
+
+    expect(text(panel)).toContain('fast  kimi-k2, thinking high · modified');
+
+    goToApply(panel);
+    panel.handleInput(ENTER);
+    expect(onApply).toHaveBeenCalledWith('workspace', [
+      { kind: 'slot', name: 'fast', binding: { model: 'kimi-k2', thinkingEffort: 'high' } },
+    ]);
+  });
+
+  it('rejects an empty slot name and stays in input mode', () => {
+    const { panel, mountPicker } = makeHarness();
+
+    openAddSlot(panel);
+    panel.handleInput(ENTER);
+
+    expect(text(panel)).toContain('Slot name cannot be empty.');
+    expect(text(panel)).toContain('New slot name');
+    expect(mountPicker).not.toHaveBeenCalled();
+  });
+
+  it('rejects a slot name containing spaces', () => {
+    const { panel, mountPicker } = makeHarness();
+
+    openAddSlot(panel);
+    type(panel, 'my slot');
+    panel.handleInput(ENTER);
+
+    expect(text(panel)).toContain('Slot name cannot contain spaces.');
+    expect(mountPicker).not.toHaveBeenCalled();
+  });
+
+  it('rejects a slot name containing a dot', () => {
+    const { panel, mountPicker } = makeHarness();
+
+    openAddSlot(panel);
+    type(panel, 'my.slot');
+    panel.handleInput(ENTER);
+
+    expect(text(panel)).toContain('Slot name cannot contain ".".');
+    expect(mountPicker).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate slot name within the same layer', () => {
+    const workspace: SubagentModelLayerData = {
+      bindings: {},
+      slots: { review: { model: 'kimi-k2' } },
+    };
+    const { panel, mountPicker } = makeHarness({ workspace });
+
+    // 6 type rows + the existing `review` slot, then `+ Add slot…`.
+    openAddSlot(panel, 7);
+    type(panel, 'review');
+    panel.handleInput(ENTER);
+
+    expect(text(panel)).toContain('Slot "review" already exists.');
+    expect(mountPicker).not.toHaveBeenCalled();
+  });
+
+  it('cancels the slot-name input on Esc without adding a row', () => {
+    const { panel, mountPicker } = makeHarness();
+
+    openAddSlot(panel);
+    type(panel, 'fast');
+    panel.handleInput(ESC);
+
+    expect(text(panel)).not.toContain('New slot name');
+    expect(text(panel)).not.toContain('fast');
+    expect(mountPicker).not.toHaveBeenCalled();
   });
 
   it('does not call onApply when applying with an empty draft', () => {
@@ -180,9 +402,11 @@ describe('SubagentModelSettingsComponent', () => {
   });
 
   it('reports staged changes in row order when applying', () => {
-    const bindings: Record<string, SubagentBinding> = { coder: { model: 'kimi-k2' } };
-    const slots: Record<string, SubagentBinding> = { review: { model: 'kimi-k2' } };
-    const { panel, mountPicker, onApply } = makeHarness({ bindings, slots });
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: { review: { model: 'kimi-k2' } },
+    };
+    const { panel, mountPicker, onApply } = makeHarness({ workspace });
 
     // Clear `coder` (first type row).
     panel.handleInput('D');
@@ -197,15 +421,35 @@ describe('SubagentModelSettingsComponent', () => {
     goToApply(panel);
     panel.handleInput(ENTER);
 
-    expect(onApply).toHaveBeenCalledWith([
+    expect(onApply).toHaveBeenCalledWith('workspace', [
       { kind: 'type', name: 'coder', binding: undefined },
       { kind: 'slot', name: 'review', binding: { inherit: true } },
     ]);
   });
 
+  it('routes apply to the global layer when it is active', () => {
+    const global: SubagentModelLayerData = {
+      bindings: { coder: { model: 'gpt-5' } },
+      slots: {},
+    };
+    const { panel, onApply } = makeHarness({ global });
+
+    panel.handleInput(TAB);
+    panel.handleInput('D'); // clear `coder` on the global layer
+    goToApply(panel);
+    panel.handleInput(ENTER);
+
+    expect(onApply).toHaveBeenCalledWith('global', [
+      { kind: 'type', name: 'coder', binding: undefined },
+    ]);
+  });
+
   it('discards the draft and cancels on Esc', () => {
-    const bindings: Record<string, SubagentBinding> = { coder: { model: 'kimi-k2' } };
-    const { panel, onCancel } = makeHarness({ bindings });
+    const workspace: SubagentModelLayerData = {
+      bindings: { coder: { model: 'kimi-k2' } },
+      slots: {},
+    };
+    const { panel, onCancel } = makeHarness({ workspace });
 
     panel.handleInput('D');
     expect(text(panel)).toContain('· modified');

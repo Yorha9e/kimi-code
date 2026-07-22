@@ -1,5 +1,7 @@
+import type { Session } from '@moonshot-ai/kimi-code-sdk';
 import { describe, expect, it, vi } from 'vitest';
 
+import { applySubagentModelSettingsChanges } from '#/tui/commands/config';
 import { handleSubagentModelCommand } from '#/tui/commands/subagent-model';
 import type { SlashCommandHost } from '#/tui/commands/dispatch';
 
@@ -33,6 +35,18 @@ function makeHost(options: {
     getSubagentSlotBindings: vi.fn(async () => slotBindings),
     setSubagentSlotBinding: vi.fn(
       async (_slot: string, _binding?: unknown) => ({ configPath: '/repo/.kimi-code/local.toml' }),
+    ),
+    getGlobalSubagentBindings: vi.fn(async () => ({})),
+    setGlobalSubagentBinding: vi.fn(
+      async (_type: string, _binding?: unknown) => ({
+        configPath: '/home/user/.kimi-code/local.toml',
+      }),
+    ),
+    getGlobalSubagentSlotBindings: vi.fn(async () => ({})),
+    setGlobalSubagentSlotBinding: vi.fn(
+      async (_slot: string, _binding?: unknown) => ({
+        configPath: '/home/user/.kimi-code/local.toml',
+      }),
     ),
   };
   const host = {
@@ -198,5 +212,62 @@ describe('handleSubagentModelCommand', () => {
     await handleSubagentModelCommand(host, 'set slot');
 
     expect(host.showError).toHaveBeenCalledWith('Usage: /subagent-model set [slot] <name>');
+  });
+});
+
+describe('applySubagentModelSettingsChanges', () => {
+  it('routes workspace type changes to the workspace RPC and reports its config path', async () => {
+    const { host, session } = makeHost({});
+
+    await applySubagentModelSettingsChanges(host, session as unknown as Session, 'workspace', [
+      { kind: 'type', name: 'coder', binding: { model: 'k3' } },
+    ]);
+
+    expect(session.setSubagentBinding).toHaveBeenCalledWith('coder', { model: 'k3' });
+    expect(session.setGlobalSubagentBinding).not.toHaveBeenCalled();
+    expect(host.showStatus).toHaveBeenCalledWith(
+      expect.stringContaining('/repo/.kimi-code/local.toml'),
+      'success',
+    );
+  });
+
+  it('routes global type changes to the global RPC and reports its config path', async () => {
+    const { host, session } = makeHost({});
+
+    await applySubagentModelSettingsChanges(host, session as unknown as Session, 'global', [
+      { kind: 'type', name: 'coder', binding: { model: 'k3' } },
+    ]);
+
+    expect(session.setGlobalSubagentBinding).toHaveBeenCalledWith('coder', { model: 'k3' });
+    expect(session.setSubagentBinding).not.toHaveBeenCalled();
+    expect(host.showStatus).toHaveBeenCalledWith(
+      expect.stringContaining('/home/user/.kimi-code/local.toml'),
+      'success',
+    );
+  });
+
+  it('routes slot changes to the matching layer slot RPC', async () => {
+    const { host, session } = makeHost({});
+
+    await applySubagentModelSettingsChanges(host, session as unknown as Session, 'global', [
+      { kind: 'slot', name: 'fast', binding: undefined },
+    ]);
+
+    expect(session.setGlobalSubagentSlotBinding).toHaveBeenCalledWith('fast', undefined);
+    expect(session.setSubagentSlotBinding).not.toHaveBeenCalled();
+    expect(session.setGlobalSubagentBinding).not.toHaveBeenCalled();
+  });
+
+  it('keeps the panel mounted and reports an error when a write fails', async () => {
+    const { host, session } = makeHost({});
+    session.setGlobalSubagentBinding.mockRejectedValueOnce(new Error('boom'));
+
+    await applySubagentModelSettingsChanges(host, session as unknown as Session, 'global', [
+      { kind: 'type', name: 'coder', binding: { model: 'k3' } },
+    ]);
+
+    expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(host.restoreEditor).not.toHaveBeenCalled();
+    expect(host.showStatus).not.toHaveBeenCalled();
   });
 });

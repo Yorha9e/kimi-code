@@ -1,16 +1,22 @@
 /**
- * Settings panel that batch-edits per-workspace subagent model bindings:
- * one row per known subagent type plus one per existing named slot, a local
- * draft (Map) staged through the shared model → effort picker chain, and a
- * single Apply step that hands the changed rows to the command layer for
- * persistence. The component never talks to the SDK itself.
+ * Settings panel that batch-edits subagent model bindings across two config
+ * layers — the workspace layer (`.kimi-code/local.toml` in the repo) and the
+ * global layer (`~/.kimi-code/local.toml`). Each layer owns one row per known
+ * subagent type plus one per existing named slot, its own local draft (Map)
+ * staged through the shared model → effort picker chain, and a single Apply
+ * step that hands the changed rows of the ACTIVE layer to the command layer for
+ * persistence. Tab / Shift+Tab switch layers (their drafts stay independent);
+ * the Slots section offers a `+ Add slot…` row that opens an inline name input.
+ * The component never talks to the SDK itself.
  */
 
 import {
   Container,
+  Input,
   Key,
   matchesKey,
   truncateToWidth,
+  visibleWidth,
   type Focusable,
 } from '@moonshot-ai/pi-tui';
 import type { SubagentBinding } from '@moonshot-ai/kimi-code-sdk';
@@ -25,10 +31,16 @@ import {
   pickSubagentBinding,
   type SubagentBindingModelLike,
 } from '#/tui/utils/subagent-binding-picker';
+import { renderTabStrip } from '#/tui/utils/tab-strip';
 
 import type { ChoicePickerComponent } from './choice-picker';
 
 const ELLIPSIS = '…';
+
+/** The two config layers a binding can be persisted to. */
+export type SubagentLayer = 'workspace' | 'global';
+
+const LAYER_TAB_LABELS = ['Workspace', 'Global'];
 
 /** One staged row change; `binding === undefined` clears the persisted binding. */
 export interface SubagentModelSettingsChange {
@@ -37,17 +49,27 @@ export interface SubagentModelSettingsChange {
   readonly binding: SubagentBinding | undefined;
 }
 
-export interface SubagentModelSettingsOptions {
-  /** Current per-type bindings (`session.getSubagentBindings()`). */
+/** The persisted bindings of one layer, loaded before the panel opens. */
+export interface SubagentModelLayerData {
+  /** Per-type bindings (workspace: `getSubagentBindings`, global: `getGlobalSubagentBindings`). */
   readonly bindings: Readonly<Record<string, SubagentBinding>>;
-  /** Current named-slot bindings (`session.getSubagentSlotBindings()`). */
+  /** Named-slot bindings (workspace: `getSubagentSlotBindings`, global: `getGlobalSubagentSlotBindings`). */
   readonly slots: Readonly<Record<string, SubagentBinding>>;
+}
+
+export interface SubagentModelSettingsOptions {
+  readonly workspace: SubagentModelLayerData;
+  readonly global: SubagentModelLayerData;
   readonly availableModels: Readonly<Record<string, SubagentBindingModelLike>>;
   /** Mount a child picker into the editor-replacement slot. */
   readonly mountPicker: (picker: ChoicePickerComponent) => void;
   /** Re-mount this panel after a child picker settles. */
   readonly remount: () => void;
-  readonly onApply: (changes: readonly SubagentModelSettingsChange[]) => void;
+  /** Apply is per-layer: only the active layer's draft is handed over. */
+  readonly onApply: (
+    layer: SubagentLayer,
+    changes: readonly SubagentModelSettingsChange[],
+  ) => void;
   readonly onCancel: () => void;
 }
 
@@ -55,69 +77,130 @@ interface SubagentModelRow {
   readonly kind: 'type' | 'slot';
   readonly name: string;
   readonly original: SubagentBinding | undefined;
+  /** True for slots added via `+ Add slot…` that are not yet persisted. */
+  readonly isNew?: boolean;
 }
 
 type SubagentModelItem =
   | { readonly kind: 'row'; readonly row: SubagentModelRow }
+  | { readonly kind: 'add-slot' }
   | { readonly kind: 'apply' };
+
+/** Per-layer rows + draft + cursor, kept independent across the two layers. */
+class SubagentModelLayerState {
+  readonly bindings: Readonly<Record<string, SubagentBinding>>;
+  readonly slots: Readonly<Record<string, SubagentBinding>>;
+  items: SubagentModelItem[];
+  /** Keyed by `${kind}:${name}`; value `undefined` stages a clear. */
+  readonly draft = new Map<string, SubagentBinding | undefined>();
+  list: SearchableList<SubagentModelItem>;
+
+  constructor(data: SubagentModelLayerData) {
+    this.bindings = data.bindings;
+    this.slots = data.slots;
+    this.items = buildItems(data);
+    this.list = makeList(this.items, 0);
+  }
+
+  hasSlot(name: string): boolean {
+    return this.items.some(
+      (item) => item.kind === 'row' && item.row.kind === 'slot' && item.row.name === name,
+    );
+  }
+
+  /** Inserts a new unbound slot row at the end of the Slots section (before the
+   * `+ Add slot…` row) and moves the cursor onto it. */
+  addSlot(name: string): SubagentModelRow {
+    const row: SubagentModelRow = { kind: 'slot', name, original: undefined, isNew: true };
+    const addIndex = this.items.findIndex((item) => item.kind === 'add-slot');
+    const insertAt = addIndex === -1 ? this.items.length : addIndex;
+    this.items.splice(insertAt, 0, { kind: 'row', row });
+    this.list = makeList(this.items, insertAt);
+    return row;
+  }
+}
 
 export class SubagentModelSettingsComponent extends Container implements Focusable {
   focused = false;
 
   private readonly opts: SubagentModelSettingsOptions;
-  private readonly items: readonly SubagentModelItem[];
-  private readonly list: SearchableList<SubagentModelItem>;
-  /** Keyed by `${kind}:${name}`; value `undefined` stages a clear. */
-  private readonly draft = new Map<string, SubagentBinding | undefined>();
+  private readonly layers: Record<SubagentLayer, SubagentModelLayerState>;
+  private activeLayer: SubagentLayer = 'workspace';
+  private readonly slotInput = new Input();
+  private addingSlot = false;
+  private slotInputError: string | undefined;
 
   constructor(opts: SubagentModelSettingsOptions) {
     super();
     this.opts = opts;
-    this.items = buildItems(opts);
-    this.list = new SearchableList({
-      items: this.items,
-      toSearchText: (item) => (item.kind === 'row' ? `${item.row.kind} ${item.row.name}` : 'apply'),
-      // Bounded row count (built-in types + existing bindings/slots): render
-      // every row on one page so the section headers never split mid-page.
-      pageSize: Math.max(this.items.length, 1),
-      searchable: false,
-    });
+    this.layers = {
+      workspace: new SubagentModelLayerState(opts.workspace),
+      global: new SubagentModelLayerState(opts.global),
+    };
+  }
+
+  private get active(): SubagentModelLayerState {
+    return this.layers[this.activeLayer];
   }
 
   handleInput(data: string): void {
+    if (this.addingSlot) {
+      this.handleSlotNameInput(data);
+      return;
+    }
     if (matchesKey(data, Key.escape)) {
-      this.draft.clear();
       this.opts.onCancel();
+      return;
+    }
+    if (matchesKey(data, Key.tab) || matchesKey(data, Key.shift('tab'))) {
+      this.activeLayer = this.activeLayer === 'workspace' ? 'global' : 'workspace';
       return;
     }
     const activate =
       matchesKey(data, Key.enter) || matchesKey(data, Key.space) || printableChar(data) === ' ';
     if (activate) {
-      const item = this.list.selected();
+      const item = this.active.list.selected();
       if (item === undefined) return;
       if (item.kind === 'apply') {
-        const changes = this.draftChanges();
-        if (changes.length > 0) this.opts.onApply(changes);
+        const changes = this.draftChanges(this.active);
+        if (changes.length > 0) this.opts.onApply(this.activeLayer, changes);
         return;
       }
-      this.openBindingPicker(item.row);
+      if (item.kind === 'add-slot') {
+        this.beginAddSlot();
+        return;
+      }
+      this.openBindingPicker(this.active, item.row);
       return;
     }
     const decoded = printableChar(data);
     if (decoded === 'D' || decoded === 'd') {
-      const item = this.list.selected();
-      if (item !== undefined && item.kind === 'row') this.toggleClearDraft(item.row);
+      const item = this.active.list.selected();
+      if (item !== undefined && item.kind === 'row') this.toggleClearDraft(this.active, item.row);
       return;
     }
-    this.list.handleKey(data);
+    this.active.list.handleKey(data);
   }
 
   override render(width: number): string[] {
-    const view = this.list.view();
+    if (this.addingSlot) return this.renderSlotNameInput(width);
+
+    const layer = this.active;
+    const view = layer.list.view();
     const lines: string[] = [
       currentTheme.fg('primary', '─'.repeat(width)),
-      currentTheme.boldFg('primary', ' Subagent models'),
-      currentTheme.fg('textMuted', ' ↑↓ navigate · Enter select · D delete · Esc cancel'),
+      this.renderTitle(),
+      currentTheme.fg(
+        'textMuted',
+        ' Tab toggle layer · ↑↓ navigate · Enter select · D delete · Esc cancel',
+      ),
+      '',
+      renderTabStrip({
+        labels: LAYER_TAB_LABELS,
+        activeIndex: this.activeLayer === 'workspace' ? 0 : 1,
+        width,
+        colors: currentTheme.palette,
+      }),
       '',
     ];
 
@@ -127,7 +210,16 @@ export class SubagentModelSettingsComponent extends Container implements Focusab
       const selected = i === view.selectedIndex;
       if (item.kind === 'apply') {
         lines.push('');
-        lines.push(this.renderApplyRow(selected));
+        lines.push(this.renderApplyRow(layer, selected));
+        continue;
+      }
+      if (item.kind === 'add-slot') {
+        if (lastRowKind !== 'slot') {
+          if (lastRowKind !== undefined) lines.push('');
+          lines.push(currentTheme.boldFg('textStrong', ' Slots'));
+          lastRowKind = 'slot';
+        }
+        lines.push(this.renderAddSlotRow(selected));
         continue;
       }
       if (item.row.kind !== lastRowKind) {
@@ -136,14 +228,63 @@ export class SubagentModelSettingsComponent extends Container implements Focusab
         lines.push(currentTheme.boldFg('textStrong', ` ${header}`));
         lastRowKind = item.row.kind;
       }
-      lines.push(this.renderRow(item.row, selected));
+      lines.push(this.renderRow(layer, item.row, selected));
     }
 
     lines.push(currentTheme.fg('primary', '─'.repeat(width)));
     return lines.map((line) => truncateToWidth(line, width, ELLIPSIS));
   }
 
-  private openBindingPicker(row: SubagentModelRow): void {
+  override invalidate(): void {
+    super.invalidate();
+    this.slotInput.invalidate();
+  }
+
+  private renderTitle(): string {
+    return (
+      currentTheme.boldFg('primary', ' Subagent models') +
+      currentTheme.fg('textMuted', ` (${this.activeLayer})`)
+    );
+  }
+
+  private handleSlotNameInput(data: string): void {
+    if (matchesKey(data, Key.escape)) {
+      this.endAddSlot();
+      return;
+    }
+    if (matchesKey(data, Key.enter)) {
+      this.submitSlotName();
+      return;
+    }
+    this.slotInput.handleInput(data);
+  }
+
+  private beginAddSlot(): void {
+    this.addingSlot = true;
+    this.slotInputError = undefined;
+    this.slotInput.setValue('');
+  }
+
+  private endAddSlot(): void {
+    this.addingSlot = false;
+    this.slotInputError = undefined;
+    this.slotInput.setValue('');
+  }
+
+  private submitSlotName(): void {
+    const name = this.slotInput.getValue().trim();
+    const error = validateSlotName(name, this.active);
+    if (error !== undefined) {
+      this.slotInputError = error;
+      return;
+    }
+    const layer = this.active;
+    const row = layer.addSlot(name);
+    this.endAddSlot();
+    this.openBindingPicker(layer, row);
+  }
+
+  private openBindingPicker(layer: SubagentModelLayerState, row: SubagentModelRow): void {
     const targetLabel = row.kind === 'slot' ? `slot "${row.name}"` : `subagent "${row.name}"`;
     pickSubagentBinding({
       targetLabel,
@@ -151,72 +292,111 @@ export class SubagentModelSettingsComponent extends Container implements Focusab
       mount: this.opts.mountPicker,
       settle: this.opts.remount,
       onBinding: (binding) => {
-        this.setDraft(row, binding);
+        this.setDraft(layer, row, binding);
       },
     });
   }
 
-  private setDraft(row: SubagentModelRow, binding: SubagentBinding): void {
+  private setDraft(
+    layer: SubagentModelLayerState,
+    row: SubagentModelRow,
+    binding: SubagentBinding,
+  ): void {
     const key = rowKey(row);
     if (bindingEquals(binding, row.original)) {
-      this.draft.delete(key);
+      layer.draft.delete(key);
       return;
     }
-    this.draft.set(key, binding);
+    layer.draft.set(key, binding);
   }
 
-  private toggleClearDraft(row: SubagentModelRow): void {
+  private toggleClearDraft(layer: SubagentModelLayerState, row: SubagentModelRow): void {
     const key = rowKey(row);
-    if (this.draft.has(key)) {
+    if (layer.draft.has(key)) {
       // D again undoes the staged change: a drafted clear returns to the
       // persisted binding, a drafted bind on a never-bound row returns to
       // unbound, and a drafted bind over a persisted binding becomes a clear.
-      if (this.draft.get(key) === undefined || row.original === undefined) {
-        this.draft.delete(key);
+      // New (unpersisted) slots only ever draft a binding, so D drops it back
+      // to `not bound · new` instead of staging a no-op clear.
+      if (layer.draft.get(key) === undefined || row.original === undefined) {
+        layer.draft.delete(key);
         return;
       }
-      this.draft.set(key, undefined);
+      layer.draft.set(key, undefined);
       return;
     }
     if (row.original === undefined) return;
-    this.draft.set(key, undefined);
+    layer.draft.set(key, undefined);
   }
 
-  private effectiveBinding(row: SubagentModelRow): SubagentBinding | undefined {
+  private effectiveBinding(
+    layer: SubagentModelLayerState,
+    row: SubagentModelRow,
+  ): SubagentBinding | undefined {
     const key = rowKey(row);
-    return this.draft.has(key) ? this.draft.get(key) : row.original;
+    return layer.draft.has(key) ? layer.draft.get(key) : row.original;
   }
 
-  private draftChanges(): readonly SubagentModelSettingsChange[] {
+  private draftChanges(
+    layer: SubagentModelLayerState,
+  ): readonly SubagentModelSettingsChange[] {
     const changes: SubagentModelSettingsChange[] = [];
-    for (const item of this.items) {
+    for (const item of layer.items) {
       if (item.kind !== 'row') continue;
       const key = rowKey(item.row);
-      if (this.draft.has(key)) {
+      if (layer.draft.has(key)) {
         changes.push({
           kind: item.row.kind,
           name: item.row.name,
-          binding: this.draft.get(key),
+          binding: layer.draft.get(key),
         });
       }
     }
     return changes;
   }
 
-  private renderRow(row: SubagentModelRow, selected: boolean): string {
+  private renderRow(
+    layer: SubagentModelLayerState,
+    row: SubagentModelRow,
+    selected: boolean,
+  ): string {
     const pointer = selected ? SELECT_POINTER : ' ';
     const prefix = currentTheme.fg(selected ? 'primary' : 'textDim', `  ${pointer} `);
     const label = selected
       ? currentTheme.boldFg('primary', row.name)
       : currentTheme.fg('text', row.name);
-    const effective = this.effectiveBinding(row);
-    const status = effective === undefined ? 'not bound' : formatSubagentBinding(effective);
-    const detail = this.draft.has(rowKey(row)) ? `${status} · modified` : status;
+    const effective = this.effectiveBinding(layer, row);
+    let status: string;
+    if (effective === undefined) {
+      status = row.isNew === true ? 'not bound · new' : 'not bound';
+    } else {
+      status = formatSubagentBinding(effective);
+    }
+    let detail = layer.draft.has(rowKey(row)) ? `${status} · modified` : status;
+    const globalRef = this.globalReference(row);
+    if (globalRef !== undefined) detail += ` · global: ${globalRef}`;
     return `${prefix}${label}  ${currentTheme.fg('textMuted', detail)}`;
   }
 
-  private renderApplyRow(selected: boolean): string {
-    const count = this.draftChanges().length;
+  /** Workspace rows reference the persisted global binding for the same name. */
+  private globalReference(row: SubagentModelRow): string | undefined {
+    if (this.activeLayer !== 'workspace') return undefined;
+    const global = this.layers.global;
+    const binding = row.kind === 'slot' ? global.slots[row.name] : global.bindings[row.name];
+    return binding === undefined ? undefined : formatSubagentBinding(binding);
+  }
+
+  private renderAddSlotRow(selected: boolean): string {
+    const pointer = selected ? SELECT_POINTER : ' ';
+    const prefix = currentTheme.fg(selected ? 'primary' : 'textDim', `  ${pointer} `);
+    const label = selected
+      ? currentTheme.boldFg('primary', '+ Add slot…')
+      : currentTheme.fg('primary', '+ Add slot…');
+    return `${prefix}${label}`;
+  }
+
+  private renderApplyRow(layer: SubagentModelLayerState, selected: boolean): string {
+    const count = this.draftChanges(layer).length;
     const pointer = selected ? SELECT_POINTER : ' ';
     const prefix = currentTheme.fg(selected ? 'primary' : 'textDim', `  ${pointer} `);
     const label = '[ Apply changes ]';
@@ -228,21 +408,81 @@ export class SubagentModelSettingsComponent extends Container implements Focusab
       count === 0 ? currentTheme.fg('textMuted', summary) : currentTheme.fg('success', summary);
     return `${prefix}${button}  ${summaryText}`;
   }
+
+  private renderSlotNameInput(width: number): string[] {
+    this.slotInput.focused = this.focused;
+    const safeWidth = Math.max(0, width);
+    const innerWidth = Math.max(1, safeWidth - 4);
+    const pad = '  ';
+    const border = (s: string): string => currentTheme.fg('primary', s);
+
+    const lines: string[] = [
+      currentTheme.fg('primary', '─'.repeat(safeWidth)),
+      this.renderTitle(),
+      currentTheme.fg('textMuted', ' Enter submit · Esc cancel'),
+      '',
+      currentTheme.boldFg('textStrong', ' New slot name'),
+    ];
+
+    const inputLine = this.slotInput.render(innerWidth)[0] ?? '> ';
+    if (safeWidth >= 4) {
+      lines.push(border('╭' + '─'.repeat(safeWidth - 2) + '╮'));
+      const rightPad = Math.max(0, innerWidth - visibleWidth(inputLine));
+      lines.push(border('│') + pad + inputLine + ' '.repeat(rightPad) + border('│'));
+      lines.push(border('╰' + '─'.repeat(safeWidth - 2) + '╯'));
+    } else {
+      lines.push(inputLine);
+    }
+
+    if (this.slotInputError !== undefined) {
+      lines.push(currentTheme.fg('error', ` ${this.slotInputError}`));
+    }
+
+    lines.push(currentTheme.fg('primary', '─'.repeat(safeWidth)));
+    return lines.map((line) => truncateToWidth(line, safeWidth, ELLIPSIS));
+  }
 }
 
-function buildItems(opts: SubagentModelSettingsOptions): SubagentModelItem[] {
+function buildItems(data: SubagentModelLayerData): SubagentModelItem[] {
   const typeNames = [
-    ...new Set([...BUILTIN_SUBAGENT_TYPES, ...Object.keys(opts.bindings)]),
+    ...new Set([...BUILTIN_SUBAGENT_TYPES, ...Object.keys(data.bindings)]),
   ].toSorted();
   const items: SubagentModelItem[] = typeNames.map((name) => ({
     kind: 'row',
-    row: { kind: 'type', name, original: opts.bindings[name] },
+    row: { kind: 'type', name, original: data.bindings[name] },
   }));
-  for (const name of Object.keys(opts.slots).toSorted()) {
-    items.push({ kind: 'row', row: { kind: 'slot', name, original: opts.slots[name] } });
+  for (const name of Object.keys(data.slots).toSorted()) {
+    items.push({ kind: 'row', row: { kind: 'slot', name, original: data.slots[name] } });
   }
+  items.push({ kind: 'add-slot' });
   items.push({ kind: 'apply' });
   return items;
+}
+
+function makeList(
+  items: readonly SubagentModelItem[],
+  initialIndex: number,
+): SearchableList<SubagentModelItem> {
+  return new SearchableList({
+    items,
+    toSearchText: (item) => {
+      if (item.kind === 'row') return `${item.row.kind} ${item.row.name}`;
+      return item.kind === 'add-slot' ? 'add slot' : 'apply';
+    },
+    // Bounded row count (built-in types + existing bindings/slots): render
+    // every row on one page so the section headers never split mid-page.
+    pageSize: Math.max(items.length, 1),
+    searchable: false,
+    initialIndex,
+  });
+}
+
+function validateSlotName(name: string, layer: SubagentModelLayerState): string | undefined {
+  if (name.length === 0) return 'Slot name cannot be empty.';
+  if (/\s/.test(name)) return 'Slot name cannot contain spaces.';
+  if (name.includes('.')) return 'Slot name cannot contain ".".';
+  if (layer.hasSlot(name)) return `Slot "${name}" already exists.`;
+  return undefined;
 }
 
 function rowKey(row: SubagentModelRow): string {

@@ -4,7 +4,6 @@ import {
   type ModelAlias,
   type PermissionMode,
   type Session,
-  type SubagentBinding,
   type ThinkingEffort,
 } from '@moonshot-ai/kimi-code-sdk';
 
@@ -20,6 +19,8 @@ import { PermissionSelectorComponent } from '../components/dialogs/permission-se
 import { SettingsSelectorComponent, type SettingsSelection } from '../components/dialogs/settings-selector';
 import {
   SubagentModelSettingsComponent,
+  type SubagentLayer,
+  type SubagentModelLayerData,
   type SubagentModelSettingsChange,
 } from '../components/dialogs/subagent-model-settings';
 import { ThemeSelectorComponent } from '../components/dialogs/theme-selector';
@@ -801,29 +802,33 @@ async function showSubagentModelSettings(host: SlashCommandHost): Promise<void> 
     host.showError(NO_ACTIVE_SESSION_MESSAGE);
     return;
   }
-  let bindings: Readonly<Record<string, SubagentBinding>>;
-  let slots: Readonly<Record<string, SubagentBinding>>;
+  let workspace: SubagentModelLayerData;
+  let global: SubagentModelLayerData;
   try {
-    [bindings, slots] = await Promise.all([
+    const [wsBindings, wsSlots, globalBindings, globalSlots] = await Promise.all([
       session.getSubagentBindings(),
       session.getSubagentSlotBindings(),
+      session.getGlobalSubagentBindings(),
+      session.getGlobalSubagentSlotBindings(),
     ]);
+    workspace = { bindings: wsBindings, slots: wsSlots };
+    global = { bindings: globalBindings, slots: globalSlots };
   } catch (error) {
     host.showError(`Failed to load subagent model bindings: ${formatErrorMessage(error)}`);
     return;
   }
-  mountSubagentModelSettingsPanel(host, session, bindings, slots);
+  mountSubagentModelSettingsPanel(host, session, workspace, global);
 }
 
 function mountSubagentModelSettingsPanel(
   host: SlashCommandHost,
   session: Session,
-  bindings: Readonly<Record<string, SubagentBinding>>,
-  slots: Readonly<Record<string, SubagentBinding>>,
+  workspace: SubagentModelLayerData,
+  global: SubagentModelLayerData,
 ): void {
   const panel = new SubagentModelSettingsComponent({
-    bindings,
-    slots,
+    workspace,
+    global,
     availableModels: host.state.appState.availableModels,
     mountPicker: (picker) => {
       host.mountEditorReplacement(picker);
@@ -831,8 +836,8 @@ function mountSubagentModelSettingsPanel(
     remount: () => {
       host.mountEditorReplacement(panel);
     },
-    onApply: (changes) => {
-      void applySubagentModelSettingsChanges(host, session, changes);
+    onApply: (layer, changes) => {
+      void applySubagentModelSettingsChanges(host, session, layer, changes);
     },
     onCancel: () => {
       host.restoreEditor();
@@ -841,9 +846,10 @@ function mountSubagentModelSettingsPanel(
   host.mountEditorReplacement(panel);
 }
 
-async function applySubagentModelSettingsChanges(
+export async function applySubagentModelSettingsChanges(
   host: SlashCommandHost,
   session: Session,
+  layer: SubagentLayer,
   changes: readonly SubagentModelSettingsChange[],
 ): Promise<void> {
   if (changes.length === 0) {
@@ -855,10 +861,7 @@ async function applySubagentModelSettingsChanges(
   for (const change of changes) {
     const label = change.kind === 'slot' ? `slot "${change.name}"` : `"${change.name}"`;
     try {
-      const result =
-        change.kind === 'slot'
-          ? await session.setSubagentSlotBinding(change.name, change.binding)
-          : await session.setSubagentBinding(change.name, change.binding);
+      const result = await applySubagentModelChange(session, layer, change);
       configPath = result.configPath;
     } catch (error) {
       failures.push(`${label}: ${formatErrorMessage(error)}`);
@@ -877,5 +880,20 @@ async function applySubagentModelSettingsChanges(
   const summary =
     changes.length === 1 ? '1 subagent model change' : `${String(changes.length)} subagent model changes`;
   const savedTo = configPath !== undefined ? `\nSaved to:\n  ${configPath}` : '';
-  host.showStatus(`Applied ${summary}.${savedTo}`, 'success');
+  host.showStatus(`Applied ${summary} to the ${layer} layer.${savedTo}`, 'success');
+}
+
+async function applySubagentModelChange(
+  session: Session,
+  layer: SubagentLayer,
+  change: SubagentModelSettingsChange,
+): Promise<{ configPath: string }> {
+  if (layer === 'global') {
+    return change.kind === 'slot'
+      ? session.setGlobalSubagentSlotBinding(change.name, change.binding)
+      : session.setGlobalSubagentBinding(change.name, change.binding);
+  }
+  return change.kind === 'slot'
+    ? session.setSubagentSlotBinding(change.name, change.binding)
+    : session.setSubagentBinding(change.name, change.binding);
 }
