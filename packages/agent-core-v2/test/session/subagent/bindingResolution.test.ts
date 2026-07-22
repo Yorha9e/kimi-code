@@ -125,14 +125,57 @@ describe('resolveSubagentSpawnBinding', () => {
       validAliases: ['type/model'],
     });
 
-    await expect(
-      resolveSubagentSpawnBinding(deps, {
-        workDir: WORK_DIR,
-        profileName: 'coder',
-        bindingSlot: 'fast',
-      }),
-    ).resolves.toEqual({});
+    const resolution = await resolveSubagentSpawnBinding(deps, {
+      workDir: WORK_DIR,
+      profileName: 'coder',
+      bindingSlot: 'fast',
+    });
+
+    expect(resolution).toEqual({});
+    expect(resolution.warning).toBeUndefined();
     expect(workspaceLocalConfig.readSubagentBinding).not.toHaveBeenCalled();
+  });
+
+  it('warns and keeps inheriting when an inherit slot entry also sets model or thinking_effort', async () => {
+    const { deps, workspaceLocalConfig, modelCatalog } = makeDeps({
+      tables: {
+        bindings: { coder: { model: 'type/model' } },
+        slotBindings: { fast: { inherit: true, model: 'slot/model', thinkingEffort: 'high' } },
+      },
+      validAliases: ['type/model', 'slot/model'],
+    });
+
+    const resolution = await resolveSubagentSpawnBinding(deps, {
+      workDir: WORK_DIR,
+      profileName: 'coder',
+      bindingSlot: 'fast',
+    });
+
+    expect(resolution).toEqual({
+      warning: expect.stringContaining('inherit=true'),
+    });
+    expect(resolution.warning).toContain('subagent-slot.fast');
+    expect(resolution.warning).toContain('model and thinking_effort');
+    expect(modelCatalog.get).not.toHaveBeenCalled();
+    expect(workspaceLocalConfig.readSubagentBinding).not.toHaveBeenCalled();
+  });
+
+  it('warns about the ignored model when an inherit type entry also sets model', async () => {
+    const { deps, modelCatalog } = makeDeps({
+      tables: { bindings: { coder: { inherit: true, model: 'gone/model' } } },
+      validAliases: [],
+    });
+
+    const resolution = await resolveSubagentSpawnBinding(deps, {
+      workDir: WORK_DIR,
+      profileName: 'coder',
+    });
+
+    expect(resolution.warning).toContain('subagent.coder');
+    expect(resolution.warning).toContain('inherit=true');
+    expect(resolution.warning).toContain('model');
+    expect(resolution.warning).not.toContain('thinking_effort');
+    expect(modelCatalog.get).not.toHaveBeenCalled();
   });
 
   it('warns and falls back to the type binding when the slot alias is stale', async () => {
@@ -153,6 +196,7 @@ describe('resolveSubagentSpawnBinding', () => {
     expect(resolution.model).toBe('type/model');
     expect(resolution.warning).toContain('subagent-slot.fast');
     expect(resolution.warning).toContain('gone/model');
+    expect(resolution.warning).toContain('not configured or cannot be resolved');
   });
 
   it('warns and inherits the caller model when the type alias is stale', async () => {

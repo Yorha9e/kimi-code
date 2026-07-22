@@ -123,7 +123,7 @@ describe('createSubagentBindingAsker', () => {
     await asker('coder', { missingModel: 'gone/model' });
 
     expect(question.request.mock.calls[0]?.[0].questions[0]?.question).toBe(
-      'Subagent type "coder" is bound to model "gone/model", but that alias no longer exists in your models config. Bind a model for it?',
+      'Subagent type "coder" is bound to model "gone/model", but that alias no longer exists in your models config or cannot be resolved. Bind a model for it?',
     );
   });
 

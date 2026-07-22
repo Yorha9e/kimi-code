@@ -9,10 +9,12 @@
  * (an empty resolution). Gated by the `subagent-model-selection`
  * experimental flag — while disabled the resolution is always empty, so the
  * spawn points behave exactly as they did before bindings existed.
- * `inherit: true` entries terminate the resolution without fallback; a stale
- * model alias (one `modelCatalog.get` rejects) warns and falls through to
- * the next-lower level. Storage failures are not swallowed — they propagate
- * to the caller.
+ * `inherit: true` entries terminate the resolution without fallback — with a
+ * warning when the same entry also carries `model` or `thinking_effort`,
+ * which are ignored; a stale model alias (one `modelCatalog.get` rejects,
+ * whether missing or otherwise unresolvable) warns and falls through to the
+ * next-lower level. Storage failures are not swallowed — they propagate to
+ * the caller.
  *
  * Callers may supply an optional interactive `ask` callback — only the
  * `Agent` tool spawn path does; the swarm path never asks. When present, a
@@ -41,8 +43,8 @@ export interface SubagentSpawnBindingResolution {
  * Context for one interactive ask-once point: `slot` is set when the ask
  * concerns a named binding slot rather than a subagent type, and
  * `missingModel` is set when a stored binding references a model alias that
- * no longer exists — the ask explains why it is happening and the answer
- * repairs the broken binding.
+ * is missing or cannot be resolved — the ask explains why it is happening
+ * and the answer repairs the broken binding.
  */
 export interface AskSubagentBindingContext {
   readonly missingModel?: string;
@@ -176,7 +178,16 @@ function resolveBindingEntry(
   fallbackLabel: string,
 ): BindingEntryResolution {
   if (entry.inherit === true) {
-    return { terminal: true, resolution: {} };
+    const ignored: string[] = [];
+    if (entry.model !== undefined) ignored.push('model');
+    if (entry.thinkingEffort !== undefined) ignored.push('thinking_effort');
+    if (ignored.length === 0) return { terminal: true, resolution: {} };
+    return {
+      terminal: true,
+      resolution: {
+        warning: `Subagent binding [${sectionLabel}] sets inherit=true; ignoring ${ignored.join(' and ')} set on the same entry.`,
+      },
+    };
   }
   if (entry.model === undefined) {
     return { terminal: true, resolution: { thinking: entry.thinkingEffort } };
@@ -186,7 +197,7 @@ function resolveBindingEntry(
   } catch {
     return {
       terminal: false,
-      warning: `Subagent binding [${sectionLabel}] references model alias "${entry.model}" which is not configured; falling back to ${fallbackLabel}.`,
+      warning: `Subagent binding [${sectionLabel}] references model alias "${entry.model}" which is not configured or cannot be resolved; falling back to ${fallbackLabel}.`,
       missingModel: entry.model,
     };
   }

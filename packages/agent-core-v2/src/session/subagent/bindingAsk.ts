@@ -4,8 +4,9 @@
  * The factory behind the `ask` callback of `bindingResolution`, used only by
  * the `Agent` tool spawn path (the swarm path never asks). The first spawn
  * of an unbound subagent type or named slot — or a stored binding that
- * references a model alias no longer in the catalog — asks the user once
- * through `ISessionQuestionService` and persists the answer to
+ * references a model alias absent from or unresolvable in the catalog —
+ * asks the user once through `ISessionQuestionService` and persists the
+ * answer to
  * `.kimi-code/local.toml` (`[subagent.<type>]` / `[subagent-slot.<name>]`),
  * including an explicit "keep inheriting" choice so the question never
  * repeats for that type or slot. A model whose catalog entry declares
@@ -58,7 +59,7 @@ export function createSubagentBindingAsker(
     const modelQuestion =
       missingModel === undefined
         ? `${subject} has no model binding in this workspace. Bind a model for it?`
-        : `${subject} is bound to model "${missingModel}", but that alias no longer exists in your models config. Bind a model for it?`;
+        : `${subject} is bound to model "${missingModel}", but that alias no longer exists in your models config or cannot be resolved. Bind a model for it?`;
     const chosen = await askOne(deps, {
       question: modelQuestion,
       options: [

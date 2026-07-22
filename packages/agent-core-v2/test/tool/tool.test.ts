@@ -41,6 +41,7 @@ import {
 } from '#/session/subagent/mirrorAgentRun';
 import { IFlagService } from '#/app/flag/flag';
 import { IWorkspaceLocalConfigService } from '#/app/workspaceLocalConfig/workspaceLocalConfig';
+import { IModelCatalog, type Model } from '#/kosong/model/catalog';
 import { IAgentLifecycleService } from '#/session/agentLifecycle/agentLifecycle';
 import {
   type AgentRunHandle,
@@ -374,6 +375,20 @@ function subagentMeta(parentAgentId = 'main'): AgentMeta {
   return {
     labels: { parentAgentId },
   };
+}
+
+function modelCatalogStub(validAliases: readonly string[]): IModelCatalog {
+  const valid = new Set(validAliases);
+  return {
+    _serviceBrand: undefined,
+    get: (alias: string): Model => {
+      if (!valid.has(alias)) throw new Error(`model.not_configured: ${alias}`);
+      return {} as Model;
+    },
+    // The harness drops the assembled-Model cache behind the service's back
+    // during context setup (see AgentTestContext.configureRuntimeModel).
+    notifyConfigChanged: () => {},
+  } as unknown as IModelCatalog;
 }
 
 describe('AgentToolInputSchema', () => {
@@ -1901,6 +1916,7 @@ describe('Agent tool execution contract', () => {
           sessionMetadataStub({ 'agent-existing': subagentMeta() }),
         ),
         appService(IFlagService, stubFlag(true)),
+        appService(IModelCatalog, modelCatalogStub(['mock-model', 'sub/model'])),
         appService(
           IWorkspaceLocalConfigService,
           stubWorkspaceLocalConfig({
@@ -1928,6 +1944,134 @@ describe('Agent tool execution contract', () => {
         modelAlias: 'sub/model',
         thinkingEffort: 'high',
       });
+    });
+
+    it('fails a sticky resume when the bound model alias no longer resolves and the flag is enabled', async () => {
+      const eventBus = {
+        _serviceBrand: undefined,
+        publish: vi.fn(),
+        subscribe: vi.fn(() => noopDisposable()),
+      } as IEventBus;
+      const targetProfile = {
+        _serviceBrand: undefined,
+        data: () => ({ profileName: 'explore', modelAlias: 'gone/model', thinkingLevel: 'high' }),
+        update: vi.fn(),
+        isToolActive: () => false,
+      } as unknown as IAgentProfileService;
+      const lifecycle = createAgentLifecycleStub({
+        runCompletion: async () => ({ summary: 'resumed result' }),
+        handleServices: new Map([['main', new Map([[IEventBus, eventBus]])]]),
+      });
+      const context = createAgentToolContext(
+        lifecycle,
+        sessionService(
+          ISessionMetadata,
+          sessionMetadataStub({ 'agent-existing': subagentMeta() }),
+        ),
+        appService(IFlagService, stubFlag(true)),
+        appService(IModelCatalog, modelCatalogStub(['mock-model'])),
+      );
+      lifecycle.addHandle(
+        'agent-existing',
+        'explore',
+        new Map([[IAgentProfileService, targetProfile]]),
+      );
+
+      const result = await executeAgentTool(context, {
+        prompt: 'Continue',
+        description: 'Continue work',
+        resume: 'agent-existing',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain(
+        'The configured subagent model alias is not resolvable. Check the bindings in .kimi-code/local.toml and your models config.',
+      );
+      expect(targetProfile.update).not.toHaveBeenCalled();
+      expect(lifecycle.run).not.toHaveBeenCalled();
+    });
+
+    it('resumes a sticky subagent without realigning when the bound alias still resolves and the flag is enabled', async () => {
+      const eventBus = {
+        _serviceBrand: undefined,
+        publish: vi.fn(),
+        subscribe: vi.fn(() => noopDisposable()),
+      } as IEventBus;
+      const targetProfile = {
+        _serviceBrand: undefined,
+        data: () => ({ profileName: 'explore', modelAlias: 'sub/model', thinkingLevel: 'high' }),
+        update: vi.fn(),
+        isToolActive: () => false,
+      } as unknown as IAgentProfileService;
+      const lifecycle = createAgentLifecycleStub({
+        runCompletion: async () => ({ summary: 'resumed result' }),
+        handleServices: new Map([['main', new Map([[IEventBus, eventBus]])]]),
+      });
+      const context = createAgentToolContext(
+        lifecycle,
+        sessionService(
+          ISessionMetadata,
+          sessionMetadataStub({ 'agent-existing': subagentMeta() }),
+        ),
+        appService(IFlagService, stubFlag(true)),
+        appService(IModelCatalog, modelCatalogStub(['mock-model', 'sub/model'])),
+      );
+      lifecycle.addHandle(
+        'agent-existing',
+        'explore',
+        new Map([[IAgentProfileService, targetProfile]]),
+      );
+
+      const result = await executeAgentTool(context, {
+        prompt: 'Continue',
+        description: 'Continue work',
+        resume: 'agent-existing',
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.output).toContain('resumed result');
+      expect(targetProfile.update).not.toHaveBeenCalled();
+    });
+
+    it('does not validate the resumed subagent model alias when the flag is disabled', async () => {
+      const eventBus = {
+        _serviceBrand: undefined,
+        publish: vi.fn(),
+        subscribe: vi.fn(() => noopDisposable()),
+      } as IEventBus;
+      const targetProfile = {
+        _serviceBrand: undefined,
+        data: () => ({ profileName: 'explore', modelAlias: 'gone/model', thinkingLevel: 'high' }),
+        update: vi.fn(),
+        isToolActive: () => false,
+      } as unknown as IAgentProfileService;
+      const lifecycle = createAgentLifecycleStub({
+        runCompletion: async () => ({ summary: 'resumed result' }),
+        handleServices: new Map([['main', new Map([[IEventBus, eventBus]])]]),
+      });
+      const context = createAgentToolContext(
+        lifecycle,
+        sessionService(
+          ISessionMetadata,
+          sessionMetadataStub({ 'agent-existing': subagentMeta() }),
+        ),
+        appService(IFlagService, stubFlag(false)),
+        appService(IModelCatalog, modelCatalogStub(['mock-model'])),
+      );
+      lifecycle.addHandle(
+        'agent-existing',
+        'explore',
+        new Map([[IAgentProfileService, targetProfile]]),
+      );
+
+      const result = await executeAgentTool(context, {
+        prompt: 'Continue',
+        description: 'Continue work',
+        resume: 'agent-existing',
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect(targetProfile.update).toHaveBeenCalledWith({ modelAlias: 'mock-model' });
     });
 
     it('realigns a directly resumed subagent to the caller model and emits no model fields when disabled', async () => {

@@ -159,6 +159,8 @@ const RESUME_WITH_TYPE_UNAVAILABLE =
 const USER_INTERRUPTED_SUBAGENT_MESSAGE =
   'The subagent was stopped before it finished by user.';
 const SUBAGENT_STOPPED_MESSAGE = 'The subagent was stopped before it finished.';
+const SUBAGENT_MODEL_UNAVAILABLE_MESSAGE =
+  'The configured subagent model alias is not resolvable. Check the bindings in .kimi-code/local.toml and your models config.';
 
 
 export class AgentTool implements BuiltinTool<AgentToolInput> {
@@ -401,7 +403,21 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
   }
 
   private realignChildModel(target: IAgentScopeHandle): void {
-    if (this.flags.enabled(SUBAGENT_MODEL_SELECTION_FLAG_ID)) return;
+    if (this.flags.enabled(SUBAGENT_MODEL_SELECTION_FLAG_ID)) {
+      // Sticky resume keeps the child's own binding; validate the bound
+      // alias still resolves so a stale binding fails fast (v1 parity:
+      // `resolveChildModel` → SUBAGENT_MODEL_UNAVAILABLE_MESSAGE) instead
+      // of surfacing mid-turn.
+      const childModelAlias = target.accessor.get(IAgentProfileService).data().modelAlias;
+      if (childModelAlias !== undefined) {
+        try {
+          this.modelCatalog.get(childModelAlias);
+        } catch {
+          throw new Error(SUBAGENT_MODEL_UNAVAILABLE_MESSAGE);
+        }
+      }
+      return;
+    }
     const modelAlias = this.profile.data().modelAlias;
     if (modelAlias === undefined) {
       throw new Error('Caller agent has no model bound');

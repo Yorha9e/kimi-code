@@ -1264,6 +1264,7 @@ describe('SessionSwarmService metadata compatibility', () => {
 
   it('keeps the bound model on resumed children and reports it on the spawned event when the flag is enabled', async () => {
     ix.stub(IFlagService, stubFlag(true));
+    ix.stub(IModelCatalog, modelCatalogStub(['kimi-test', 'sub/model']));
     agents['agent-existing'] = {
       labels: { parentAgentId: 'main' },
     };
@@ -1294,6 +1295,86 @@ describe('SessionSwarmService metadata compatibility', () => {
       modelAlias: 'sub/model',
       thinkingEffort: 'high',
     });
+  });
+
+  it('fails a sticky resume when the resumed child model alias no longer resolves', async () => {
+    ix.stub(IFlagService, stubFlag(true));
+    agents['agent-existing'] = {
+      labels: { parentAgentId: 'main' },
+    };
+    const child = agentHandle('agent-existing', lifecycle, eventBus, {
+      profileName: 'explore',
+      modelAlias: 'gone/model',
+      thinkingLevel: 'high',
+    });
+    handles.set('agent-existing', child);
+    const service = ix.get(ISessionSwarmService);
+
+    await expect(
+      service.run({
+        callerAgentId: 'main',
+        tasks: [resumeSessionTask('agent-existing')],
+      }),
+    ).resolves.toMatchObject([
+      {
+        status: 'failed',
+        state: 'not_started',
+        error:
+          'The configured subagent model alias is not resolvable. Check the bindings in .kimi-code/local.toml and your models config.',
+      },
+    ]);
+    expect(runAgent).not.toHaveBeenCalled();
+    expect(child.accessor.get(IAgentProfileService).data().modelAlias).toBe('gone/model');
+  });
+
+  it('keeps the bound model on resumed children when the alias still resolves and the flag is enabled', async () => {
+    ix.stub(IFlagService, stubFlag(true));
+    ix.stub(IModelCatalog, modelCatalogStub(['kimi-test', 'sub/model']));
+    agents['agent-existing'] = {
+      labels: { parentAgentId: 'main' },
+    };
+    const child = agentHandle('agent-existing', lifecycle, eventBus, {
+      profileName: 'explore',
+      modelAlias: 'sub/model',
+      thinkingLevel: 'high',
+    });
+    handles.set('agent-existing', child);
+    const service = ix.get(ISessionSwarmService);
+
+    await expect(
+      service.run({
+        callerAgentId: 'main',
+        tasks: [resumeSessionTask('agent-existing')],
+      }),
+    ).resolves.toMatchObject([{ status: 'completed', agentId: 'agent-existing' }]);
+
+    expect(child.accessor.get(IAgentProfileService).data().modelAlias).toBe('sub/model');
+    expect(runAgent).toHaveBeenCalledWith(
+      'agent-existing',
+      { kind: 'prompt', prompt: 'Continue' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('does not validate the resumed child model alias when the flag is disabled', async () => {
+    agents['agent-existing'] = {
+      labels: { parentAgentId: 'main' },
+    };
+    const child = agentHandle('agent-existing', lifecycle, eventBus, {
+      profileName: 'explore',
+      modelAlias: 'gone/model',
+    });
+    handles.set('agent-existing', child);
+    const service = ix.get(ISessionSwarmService);
+
+    await expect(
+      service.run({
+        callerAgentId: 'main',
+        tasks: [resumeSessionTask('agent-existing')],
+      }),
+    ).resolves.toMatchObject([{ status: 'completed', agentId: 'agent-existing' }]);
+
+    expect(child.accessor.get(IAgentProfileService).data().modelAlias).toBe('kimi-test');
   });
 
   it('does not emit spawned again when a rate-limited child retries', async () => {
